@@ -1,17 +1,24 @@
 """
 Arbiter AI — LLM Interface
 Handles hardware-aware model loading and response generation.
-Supports local LLaMA-style models via llama-cpp-python or transformers.
+Supports local LLaMA-style models via llama-cpp-python, Ollama, or a stub fallback.
 """
 
+import json
 import os
 import subprocess
+import urllib.error
+import urllib.request
 
 _model = None
 _tokenizer = None
+_ollama_model_name: str = ""
 
 # VRAM threshold (GB) for enabling GPU acceleration in llama-cpp-python
 MIN_VRAM_FOR_GPU_GB = 6.0
+
+# Ollama REST API base URL (default local installation)
+OLLAMA_BASE_URL = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
 
 
 def _detect_vram_gb() -> float:
@@ -81,8 +88,26 @@ def _find_model_in_default_dir() -> str:
     return str(gguf_files[0])
 
 
+def _try_connect_ollama() -> str:
+    """
+    Check whether a local Ollama instance is running and has at least one model.
+    Returns the name of the first available model, or an empty string if unavailable.
+    """
+    try:
+        with urllib.request.urlopen(
+            f"{OLLAMA_BASE_URL}/api/tags", timeout=3
+        ) as resp:
+            data = json.loads(resp.read())
+            models = data.get("models", [])
+            if models:
+                return models[0]["name"]
+    except Exception:
+        pass
+    return ""
+
+
 def _load_model():
-    global _model, _tokenizer
+    global _model, _tokenizer, _ollama_model_name
     if _model is not None:
         return
 
@@ -104,12 +129,43 @@ def _load_model():
             print(f"[LLM] Loaded GGUF model from {model_path} (GPU layers: {n_gpu_layers})")
             return
         except ImportError:
-            pass
+            print("[LLM] llama-cpp-python not installed — skipping GGUF loader. "
+                  "Install it with: pip install llama-cpp-python")
+
+    # Try Ollama next (easy local LLM runner — just needs `ollama` installed & a model pulled)
+    ollama_model = _try_connect_ollama()
+    if ollama_model:
+        _ollama_model_name = ollama_model
+        _model = "ollama"
+        print(f"[LLM] Using Ollama model: {ollama_model}  (host: {OLLAMA_BASE_URL})")
+        return
 
     # Fallback: stub responder (no model installed)
     print("[LLM] No model configured — using stub responder. "
-          "Run setup_arbiter.py or POST /models/download to download a model automatically.")
+          "Run setup_arbiter.py or POST /models/download to download a model automatically, "
+          "or install Ollama (https://ollama.com) and run: ollama pull mistral")
     _model = "stub"
+
+
+def get_model_status() -> dict:
+    """
+    Return the current LLM backend status without triggering a load.
+    If the model has not been loaded yet, trigger loading now.
+    """
+    _load_model()
+    if _model == "stub":
+        return {"backend": "stub", "detail": "No model configured"}
+    if _model == "ollama":
+        return {"backend": "ollama", "detail": _ollama_model_name}
+    if _model is not None:
+        path = os.environ.get("ARBITER_MODEL_PATH") or _find_model_in_default_dir()
+        return {"backend": "gguf", "detail": path}
+    return {"backend": "not_loaded", "detail": ""}
+
+
+def preload_model() -> None:
+    """Public entry-point for pre-loading the model at server startup."""
+    _load_model()
 
 
 def generate_response(message: str, project: str, max_tokens: int = 512) -> str:
@@ -119,10 +175,38 @@ def generate_response(message: str, project: str, max_tokens: int = 512) -> str:
     if _model == "stub" or _model is None:
         return (
             f"[Stub] Arbiter received: '{message}' for project '{project}'. "
-            "Configure ARBITER_MODEL_PATH to enable real LLM inference."
+            "Configure ARBITER_MODEL_PATH to enable real LLM inference, "
+            "or install Ollama (https://ollama.com) and run: ollama pull mistral"
         )
 
-    # llama-cpp-python inference
+    # ── Ollama inference ──────────────────────────────────────────────────────
+    if _model == "ollama":
+        try:
+            system_prompt = (
+                "You are Arbiter, a personal autonomous AI development assistant. "
+                "You are precise, technical, and explain your reasoning like a teacher. "
+                f"You are currently working on the project: {project}."
+            )
+            payload = json.dumps({
+                "model": _ollama_model_name,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user",   "content": message},
+                ],
+                "stream": False,
+            }).encode()
+            req = urllib.request.Request(
+                f"{OLLAMA_BASE_URL}/api/chat",
+                data=payload,
+                headers={"Content-Type": "application/json"},
+            )
+            with urllib.request.urlopen(req, timeout=120) as resp:
+                data = json.loads(resp.read())
+                return data["message"]["content"].strip()
+        except Exception as e:
+            return f"[Ollama Error] {e}"
+
+    # ── llama-cpp-python inference ────────────────────────────────────────────
     try:
         system_prompt = (
             "You are Arbiter, a personal autonomous AI development assistant. "

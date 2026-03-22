@@ -132,12 +132,50 @@ If you prefer to download a model yourself:
 
 1. Download a GGUF file from [HuggingFace TheBloke](https://huggingface.co/TheBloke)
 2. Place it in `AIEngine/LLaMA2-13B/`
-3. *(Optional)* Set the environment variable to override auto-detection:
+3. *(Optional)* Set the environment variable in your `.env` file (repo root) to override auto-detection:
    ```
    ARBITER_MODEL_PATH=C:\path\to\your-model.gguf
    ```
+   The `.env` file is loaded automatically on server start — no need to set a system environment variable.
 
 See `AIEngine/LLaMA2-13B/README.md` for the full model compatibility table.
+
+---
+
+### Ollama *(easiest local LLM setup)*
+
+[Ollama](https://ollama.com) provides a one-command local LLM installation that Arbiter
+detects automatically — no GGUF download or environment variable required.
+
+```bash
+# 1. Install Ollama from https://ollama.com
+# 2. Pull a model (Mistral is a good starting point)
+ollama pull mistral
+# 3. Start Arbiter — it will detect Ollama automatically
+python AIEngine/PythonBridge/fastapi_bridge.py
+```
+
+To point Arbiter at a non-default Ollama host, set `OLLAMA_HOST` in your `.env` file:
+```
+OLLAMA_HOST=http://192.168.1.10:11434
+```
+
+---
+
+### llama-cpp-python *(for GGUF models)*
+
+For GGUF model inference, install `llama-cpp-python` (after `setup_arbiter.py` downloads the
+model):
+
+```bash
+# CPU-only (always works):
+pip install llama-cpp-python
+
+# GPU-accelerated (CUDA — replace cu121 with your CUDA version):
+CMAKE_ARGS="-DGGML_CUDA=on" pip install llama-cpp-python
+# or on Windows:
+pip install llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu121
+```
 
 ---
 
@@ -147,6 +185,7 @@ See `AIEngine/LLaMA2-13B/README.md` for the full model compatibility table.
 |---|---|---|
 | `/health` | GET | Health check |
 | `/status` | GET | GPU, VRAM, model, token limit info |
+| `/llm/status` | GET | Active LLM backend: `gguf`, `ollama`, or `stub` |
 | `/chat` | POST | Send a message, get Arbiter's response + TTS |
 | `/history/{project}` | GET | Retrieve conversation history for a project |
 | `/models` | GET | List recommended + already-downloaded models |

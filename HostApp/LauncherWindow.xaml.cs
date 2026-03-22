@@ -51,6 +51,33 @@ namespace ArbiterHost
                 if (root.TryGetProperty("arbiterEnginePort", out var portProp)
                     && portProp.TryGetInt32(out int port))
                     AppConfig.ArbiterEnginePort = port;
+
+                if (root.TryGetProperty("python_bridge_url", out var bridgeProp))
+                    AppConfig.ApiBaseUrl = bridgeProp.GetString() ?? AppConfig.ApiBaseUrl;
+
+                if (root.TryGetProperty("projects_path", out var projProp))
+                    AppConfig.ProjectsPath = projProp.GetString() ?? AppConfig.ProjectsPath;
+
+                if (root.TryGetProperty("memory_path", out var memProp))
+                    AppConfig.MemoryPath = memProp.GetString() ?? AppConfig.MemoryPath;
+
+                if (root.TryGetProperty("llm_backend", out var llmProp))
+                    AppConfig.LlmBackend = llmProp.GetString() ?? AppConfig.LlmBackend;
+
+                if (root.TryGetProperty("llm_model_path", out var modelProp))
+                    AppConfig.LlmModelPath = modelProp.GetString() ?? string.Empty;
+
+                if (root.TryGetProperty("default_voice", out var voiceProp))
+                    AppConfig.DefaultVoice = voiceProp.GetString() ?? AppConfig.DefaultVoice;
+
+                if (root.TryGetProperty("tts_enabled", out var ttsProp))
+                    AppConfig.TtsEnabled = ttsProp.ValueKind == JsonValueKind.True;
+
+                if (root.TryGetProperty("git_author_name", out var gitNameProp))
+                    AppConfig.GitAuthorName = gitNameProp.GetString() ?? AppConfig.GitAuthorName;
+
+                if (root.TryGetProperty("git_author_email", out var gitEmailProp))
+                    AppConfig.GitAuthorEmail = gitEmailProp.GetString() ?? AppConfig.GitAuthorEmail;
             }
             catch { /* best-effort */ }
         }

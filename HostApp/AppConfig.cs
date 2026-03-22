@@ -34,5 +34,31 @@ namespace ArbiterHost
         /// clean it up regardless of which window started it.
         /// </summary>
         public static System.Diagnostics.Process? BridgeProcess { get; set; }
+
+        // ── Settings loaded from settings.json ────────────────────────────────
+
+        /// <summary>Path to the projects workspace directory.</summary>
+        public static string ProjectsPath { get; set; } = "Projects";
+
+        /// <summary>Path to the conversation memory/logs directory.</summary>
+        public static string MemoryPath { get; set; } = "Memory/ConversationLogs";
+
+        /// <summary>Active LLM backend name (e.g. "ollama", "embedded", "api").</summary>
+        public static string LlmBackend { get; set; } = "ollama";
+
+        /// <summary>Path to a local GGUF model file (used by the embedded backend).</summary>
+        public static string LlmModelPath { get; set; } = string.Empty;
+
+        /// <summary>Default TTS voice name.</summary>
+        public static string DefaultVoice { get; set; } = "British_Female";
+
+        /// <summary>Whether TTS is enabled by default.</summary>
+        public static bool TtsEnabled { get; set; } = true;
+
+        /// <summary>Git author name for commits.</summary>
+        public static string GitAuthorName { get; set; } = "ArbiterUser";
+
+        /// <summary>Git author email for commits.</summary>
+        public static string GitAuthorEmail { get; set; } = "arbiter@local";
     }
 }

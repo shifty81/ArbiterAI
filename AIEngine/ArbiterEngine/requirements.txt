@@ -8,3 +8,8 @@ toml>=0.10.2
 gitpython>=3.1.41
 Pillow>=10.2.0
 requests>=2.31.0
+
+# Optional — only needed for the "embedded" LLM backend (in-process GGUF inference).
+# Install: pip install llama-cpp-python
+# GPU/CUDA: CMAKE_ARGS="-DLLAMA_CUDA=on" pip install llama-cpp-python --force-reinstall
+# llama-cpp-python>=0.2.0

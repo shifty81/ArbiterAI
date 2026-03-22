@@ -30,6 +30,24 @@ model = "codestral"
 [llm.local]
 model_path = "models/model.gguf"
 
+# ── Embedded (in-process) backend — no external server required ───────────────
+# Uses llama-cpp-python to load a GGUF model directly inside this process.
+# Install:  pip install llama-cpp-python
+# GPU/CUDA: CMAKE_ARGS="-DLLAMA_CUDA=on" pip install llama-cpp-python
+#
+# To use this backend set:  default_llm_backend = "embedded"
+[llm.embedded]
+# Full path to a GGUF model file (download from https://huggingface.co/TheBloke)
+model_path   = ""
+# Token context window (increase for longer conversations, uses more RAM)
+n_ctx        = 4096
+# GPU layers to offload: -1 = all (fastest), 0 = CPU only
+n_gpu_layers = -1
+# CPU threads (0 = auto-detect)
+n_threads    = 0
+# Verbose llama.cpp output (useful for debugging)
+verbose      = false
+
 [llm.lmstudio]
 base_url = "http://localhost:1234"
 model = ""

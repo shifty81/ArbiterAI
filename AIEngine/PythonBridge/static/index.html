@@ -275,6 +275,104 @@
         .dl-msg { font-size: 11px; color: #8a8a8a; }
 
         /* ════════════════════════════════════
+           PROJECT ATTACH MODAL
+        ════════════════════════════════════ */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,.65);
+            backdrop-filter: blur(4px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        .modal-overlay.hidden { display: none !important; }
+
+        .modal-card {
+            background: #1e1e1e;
+            border: 1px solid #3a3a3a;
+            border-radius: 16px;
+            padding: 32px 32px 24px;
+            width: 440px;
+            max-width: calc(100vw - 40px);
+            box-shadow: 0 20px 60px rgba(0,0,0,.6);
+        }
+
+        .modal-title {
+            font-size: 20px;
+            font-weight: 700;
+            color: #ececec;
+            margin-bottom: 8px;
+            letter-spacing: -0.01em;
+        }
+
+        .modal-subtitle {
+            font-size: 13px;
+            color: #8a8a8a;
+            margin-bottom: 22px;
+            line-height: 1.6;
+        }
+
+        .modal-label {
+            font-size: 12px;
+            font-weight: 600;
+            color: #8a8a8a;
+            text-transform: uppercase;
+            letter-spacing: .06em;
+            margin-bottom: 6px;
+        }
+
+        .modal-select {
+            width: 100%;
+            background: #2a2a2a;
+            border: 1px solid #3a3a3a;
+            border-radius: 8px;
+            color: #ececec;
+            font-size: 13.5px;
+            padding: 9px 10px;
+            margin-bottom: 20px;
+            outline: none;
+            cursor: pointer;
+            -webkit-appearance: none;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none'%3E%3Cpath d='M6 9l6 6 6-6' stroke='%23888' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 10px center;
+            padding-right: 32px;
+        }
+        .modal-select:focus { border-color: #007acc; }
+        .modal-select option { background: #2a2a2a; }
+
+        .modal-actions {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+        }
+
+        .modal-btn {
+            padding: 9px 22px;
+            border: none;
+            border-radius: 8px;
+            font-size: 13.5px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background .15s, opacity .15s;
+        }
+        .modal-btn:disabled { opacity: .5; cursor: not-allowed; }
+        .modal-btn.secondary {
+            background: #2a2a2a;
+            color: #bbb;
+            border: 1px solid #3a3a3a;
+        }
+        .modal-btn.secondary:hover:not(:disabled) { background: #333; color: #fff; }
+        .modal-btn.primary {
+            background: #007acc;
+            color: #fff;
+        }
+        .modal-btn.primary:hover:not(:disabled) { background: #009af0; }
+
+        /* ════════════════════════════════════
            MAIN AREA
         ════════════════════════════════════ */
         .main {
@@ -663,6 +761,29 @@
     </main>
 </div>
 
+<!-- ═══════════ PROJECT ATTACH MODAL ═══════════ -->
+<div class="modal-overlay hidden" id="attachModal" role="dialog" aria-modal="true"
+     aria-labelledby="attachModalTitle">
+    <div class="modal-card">
+        <div class="modal-title" id="attachModalTitle">Start new chat</div>
+        <div class="modal-subtitle">
+            Would you like to attach this chat to a project?<br>
+            Attaching lets Arbiter use your project's file tree, history and persona.
+        </div>
+
+        <div class="modal-label">Project</div>
+        <select class="modal-select" id="attachProjectSelect">
+            <option value="">— no project —</option>
+        </select>
+
+        <div class="modal-actions">
+            <button class="modal-btn secondary" id="attachCancelBtn">Cancel</button>
+            <button class="modal-btn secondary" id="attachNoProjectBtn">No project</button>
+            <button class="modal-btn primary" id="attachConfirmBtn">Attach &amp; start</button>
+        </div>
+    </div>
+</div>
+
 <script>
 "use strict";
 
@@ -671,7 +792,7 @@ let activeProject  = null;
 let activePersona  = 'Arbiter';
 let isSending      = false;
 
-// DOM refs
+/* ── DOM refs ────────────────────────────────────────────────────────────────── */
 const projectList      = document.getElementById('projectList');
 const personaList      = document.getElementById('personaList');
 const welcomeState     = document.getElementById('welcomeState');
@@ -692,6 +813,11 @@ const dlProgress       = document.getElementById('dlProgress');
 const dlBarFill        = document.getElementById('dlBarFill');
 const dlMsg            = document.getElementById('dlMsg');
 const downloadBtn      = document.getElementById('downloadModelBtn');
+const attachModal      = document.getElementById('attachModal');
+const attachSelect     = document.getElementById('attachProjectSelect');
+const attachConfirmBtn = document.getElementById('attachConfirmBtn');
+const attachNoBtn      = document.getElementById('attachNoProjectBtn');
+const attachCancelBtn  = document.getElementById('attachCancelBtn');
 
 /* ── Server health ──────────────────────────────────────────────────────────── */
 async function checkServer() {
@@ -802,11 +928,16 @@ async function loadProjects() {
         const r = await fetch(`${API}/projects`);
         const { projects } = await r.json();
         projectList.innerHTML = '';
+
+        // Reset attach modal select
+        attachSelect.innerHTML = '<option value="">— no project —</option>';
+
         if (!projects || projects.length === 0) {
             projectList.innerHTML = '<div class="hint">No projects found</div>';
             return;
         }
         projects.forEach(p => {
+            // Sidebar entry
             const el = document.createElement('div');
             el.className = 'project-item';
             el.dataset.project = p;
@@ -819,6 +950,12 @@ async function loadProjects() {
                  <span>${esc(p)}</span>`;
             el.addEventListener('click', () => selectProject(p));
             projectList.appendChild(el);
+
+            // Modal dropdown option
+            const opt = document.createElement('option');
+            opt.value = p;
+            opt.textContent = p;
+            attachSelect.appendChild(opt);
         });
     } catch {
         projectList.innerHTML = '<div class="hint">Could not load projects</div>';
@@ -937,16 +1074,63 @@ async function loadHistory(project) {
     } catch { /* no history yet is fine */ }
 }
 
-/* ── New chat ───────────────────────────────────────────────────────────────── */
+/* ── New chat — show project-attach modal ───────────────────────────────────── */
 function newChat() {
+    // Pre-select current project in modal if one is active
+    if (activeProject) {
+        attachSelect.value = activeProject;
+    }
+    attachModal.classList.remove('hidden');
+    attachSelect.focus();
+}
+document.getElementById('newChatBtn').addEventListener('click', newChat);
+document.getElementById('newChatIconBtn').addEventListener('click', newChat);
+
+/* Attach modal: Cancel */
+attachCancelBtn.addEventListener('click', () => {
+    attachModal.classList.add('hidden');
+});
+
+/* Attach modal: No project — open a fresh detached chat */
+attachNoBtn.addEventListener('click', () => {
+    attachModal.classList.add('hidden');
+    openDetachedChat();
+});
+
+/* Attach modal: Attach & start */
+attachConfirmBtn.addEventListener('click', () => {
+    const chosen = attachSelect.value;
+    attachModal.classList.add('hidden');
+    if (chosen) {
+        selectProject(chosen);   // loads history + persona
+    } else {
+        openDetachedChat();
+    }
+});
+
+/* Dismiss on backdrop click */
+attachModal.addEventListener('click', e => {
+    if (e.target === attachModal) attachModal.classList.add('hidden');
+});
+
+function openDetachedChat() {
+    _clearChat();
+    activeProject = 'default';
+    mainHeader.classList.add('hidden');
+    chatScroll.classList.remove('hidden');
+    inputArea.classList.remove('hidden');
+    welcomeState.classList.add('hidden');
+    chatInput.disabled = false;
+    sendBtn.disabled = true;
+    chatInput.focus();
+}
+
+function _clearChat() {
     messagesInner.innerHTML = '';
     chatInput.value = '';
     chatInput.style.height = 'auto';
     sendBtn.disabled = true;
-    if (activeProject) chatInput.focus();
 }
-document.getElementById('newChatBtn').addEventListener('click', newChat);
-document.getElementById('newChatIconBtn').addEventListener('click', newChat);
 
 /* ── Textarea auto-grow ─────────────────────────────────────────────────────── */
 chatInput.addEventListener('input', () => {

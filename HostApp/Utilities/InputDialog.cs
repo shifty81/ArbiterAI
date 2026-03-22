@@ -57,6 +57,7 @@ namespace ArbiterHost.Utilities
             grid.Children.Add(buttonPanel);
 
             dialog.Content = grid;
+            dialog.SourceInitialized += (_, _) => DarkTitleBar.Apply(dialog);
             dialog.ShowDialog();
 
             return result;

@@ -157,6 +157,53 @@
                          FontSize="11"
                          AcceptsReturn="True"/>
             </TabItem>
+            <TabItem Header="Console">
+                <!-- Inner TabControl with one sub-tab per log stream -->
+                <TabControl Name="ConsoleTabControl">
+                    <TabItem>
+                        <TabItem.Header>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="LLM" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                <Button Content="Copy" Padding="4,1" FontSize="10"
+                                        Click="CopyLlmConsole_Click"
+                                        ToolTip="Copy LLM log to clipboard"/>
+                            </StackPanel>
+                        </TabItem.Header>
+                        <TextBox Name="LlmConsoleBox" IsReadOnly="True" TextWrapping="NoWrap"
+                                 VerticalScrollBarVisibility="Auto"
+                                 HorizontalScrollBarVisibility="Auto"
+                                 FontFamily="Courier New" FontSize="11" AcceptsReturn="True"/>
+                    </TabItem>
+                    <TabItem>
+                        <TabItem.Header>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="App" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                <Button Content="Copy" Padding="4,1" FontSize="10"
+                                        Click="CopyAppConsole_Click"
+                                        ToolTip="Copy App log to clipboard"/>
+                            </StackPanel>
+                        </TabItem.Header>
+                        <TextBox Name="AppConsoleBox" IsReadOnly="True" TextWrapping="NoWrap"
+                                 VerticalScrollBarVisibility="Auto"
+                                 HorizontalScrollBarVisibility="Auto"
+                                 FontFamily="Courier New" FontSize="11" AcceptsReturn="True"/>
+                    </TabItem>
+                    <TabItem>
+                        <TabItem.Header>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="Server" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                <Button Content="Copy" Padding="4,1" FontSize="10"
+                                        Click="CopyServerConsole_Click"
+                                        ToolTip="Copy Server log to clipboard"/>
+                            </StackPanel>
+                        </TabItem.Header>
+                        <TextBox Name="ServerConsoleBox" IsReadOnly="True" TextWrapping="NoWrap"
+                                 VerticalScrollBarVisibility="Auto"
+                                 HorizontalScrollBarVisibility="Auto"
+                                 FontFamily="Courier New" FontSize="11" AcceptsReturn="True"/>
+                    </TabItem>
+                </TabControl>
+            </TabItem>
         </TabControl>
     </Grid>
 </Window>

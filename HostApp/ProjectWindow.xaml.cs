@@ -1,12 +1,16 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media;
 using ArbiterHost.BuildInterface;
 using ArbiterHost.GitInterface;
 using ArbiterHost.Utilities;
@@ -18,11 +22,13 @@ namespace ArbiterHost
         public string ProjectName { get; private set; }
         public string CurrentProjectPath { get; private set; }
 
-        private static readonly HttpClient httpClient = new HttpClient();
+        private static readonly HttpClient httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
         private const string PythonApiBase = "http://127.0.0.1:8000";
+        private const int MaxServerStartupSeconds = 10;
 
         private readonly GitManager gitManager = new GitManager();
         private readonly BuildManager buildManager;
+        private Process? _serverProcess;
 
         public ProjectWindow(string projectName, string projectsRoot)
         {
@@ -33,6 +39,156 @@ namespace ArbiterHost
             buildManager = new BuildManager(CurrentProjectPath);
             LoadProjectFiles();
             LoadPhaseSelector();
+        }
+
+        private async void Window_Loaded(object sender, RoutedEventArgs e)
+        {
+            await CheckServerStatusAsync();
+        }
+
+        private void Window_Closing(object sender, System.ComponentModel.CancelEventArgs e)
+        {
+            try
+            {
+                if (_serverProcess != null && !_serverProcess.HasExited)
+                    _serverProcess.Kill(entireProcessTree: true);
+            }
+            catch { /* best-effort */ }
+        }
+
+        /// <summary>
+        /// Pings GET /health and updates the status dot and label.
+        /// </summary>
+        private async Task CheckServerStatusAsync()
+        {
+            ServerStatusText.Text = "Server: checking\u2026";
+            ServerStatusDot.Fill = Brushes.Gray;
+            StartServerButton.IsEnabled = false;
+
+            bool online = false;
+            try
+            {
+                var response = await httpClient.GetAsync(PythonApiBase + "/health");
+                online = response.IsSuccessStatusCode;
+            }
+            catch
+            {
+                online = false;
+            }
+
+            if (online)
+            {
+                ServerStatusDot.Fill = Brushes.LimeGreen;
+                ServerStatusText.Text = "Server: Online";
+                StartServerButton.IsEnabled = false;
+            }
+            else
+            {
+                ServerStatusDot.Fill = Brushes.Red;
+                ServerStatusText.Text = "Server: Offline";
+                StartServerButton.IsEnabled = true;
+            }
+        }
+
+        private async void StartServer_Click(object sender, RoutedEventArgs e)
+        {
+            StartServerButton.IsEnabled = false;
+            ServerStatusText.Text = "Server: starting\u2026";
+            ServerStatusDot.Fill = Brushes.Orange;
+
+            try
+            {
+                // Locate fastapi_bridge.py relative to the application directory
+                string appDir = AppDomain.CurrentDomain.BaseDirectory;
+                string bridgePath = Path.GetFullPath(
+                    Path.Combine(appDir, "..", "..", "..", "..", "AIEngine", "PythonBridge", "fastapi_bridge.py"));
+
+                if (!File.Exists(bridgePath))
+                {
+                    MessageBox.Show(
+                        $"Could not find fastapi_bridge.py at:\n{bridgePath}\n\nPlease start the Python server manually:\n  cd AIEngine/PythonBridge\n  python fastapi_bridge.py",
+                        "Server Not Found", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    ServerStatusText.Text = "Server: Offline";
+                    ServerStatusDot.Fill = Brushes.Red;
+                    StartServerButton.IsEnabled = true;
+                    return;
+                }
+
+                string? bridgeDir = Path.GetDirectoryName(bridgePath);
+                if (string.IsNullOrEmpty(bridgeDir))
+                {
+                    MessageBox.Show(
+                        "Could not determine the directory for fastapi_bridge.py.",
+                        "Server Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                    ServerStatusText.Text = "Server: Offline";
+                    ServerStatusDot.Fill = Brushes.Red;
+                    StartServerButton.IsEnabled = true;
+                    return;
+                }
+
+                var psi = new ProcessStartInfo
+                {
+                    FileName = "python",
+                    Arguments = $"\"{bridgePath}\"",
+                    WorkingDirectory = bridgeDir,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                };
+
+                _serverProcess = Process.Start(psi);
+
+                if (_serverProcess == null)
+                {
+                    ServerStatusText.Text = "Server: Offline";
+                    ServerStatusDot.Fill = Brushes.Red;
+                    StartServerButton.IsEnabled = true;
+                    MessageBox.Show(
+                        "Failed to start the Python server process. " +
+                        "Ensure Python is installed and in PATH.",
+                        "Start Server Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                    return;
+                }
+
+                // Wait up to MaxServerStartupSeconds for the server to become available
+                bool serverOnline = false;
+                for (int i = 0; i < MaxServerStartupSeconds; i++)
+                {
+                    await Task.Delay(1000);
+                    try
+                    {
+                        var resp = await httpClient.GetAsync(PythonApiBase + "/health");
+                        if (resp.IsSuccessStatusCode) { serverOnline = true; break; }
+                    }
+                    catch { /* still starting */ }
+                }
+
+                if (serverOnline)
+                {
+                    ServerStatusDot.Fill = Brushes.LimeGreen;
+                    ServerStatusText.Text = "Server: Online";
+                }
+                else
+                {
+                    ServerStatusDot.Fill = Brushes.Red;
+                    ServerStatusText.Text = "Server: Offline";
+                    StartServerButton.IsEnabled = true;
+                    MessageBox.Show(
+                        "The server process was started but is not responding yet.\n" +
+                        "It may still be loading. Click 'Start Server' to retry.",
+                        "Server Timeout", MessageBoxButton.OK, MessageBoxImage.Warning);
+                }
+            }
+            catch (Exception ex)
+            {
+                ServerStatusDot.Fill = Brushes.Red;
+                ServerStatusText.Text = "Server: Offline";
+                StartServerButton.IsEnabled = true;
+                MessageBox.Show(
+                    $"Failed to start Python server:\n{ex.Message}\n\n" +
+                    "Ensure Python is installed and in PATH, then start manually:\n" +
+                    "  cd AIEngine/PythonBridge\n  python fastapi_bridge.py",
+                    "Start Server Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
         }
 
         private void LoadProjectFiles()
@@ -119,6 +275,31 @@ namespace ArbiterHost
                 SuggestionsListBox.Items.Add(arbiterResponse);
 
                 ChatDisplay.ScrollIntoView(ChatDisplay.Items[ChatDisplay.Items.Count - 1]);
+
+                // Ensure status reflects that server is running
+                ServerStatusDot.Fill = Brushes.LimeGreen;
+                ServerStatusText.Text = "Server: Online";
+                StartServerButton.IsEnabled = false;
+            }
+            catch (HttpRequestException ex) when (
+                ex.InnerException is System.Net.Sockets.SocketException se &&
+                se.SocketErrorCode == System.Net.Sockets.SocketError.ConnectionRefused)
+            {
+                ServerStatusDot.Fill = Brushes.Red;
+                ServerStatusText.Text = "Server: Offline";
+                StartServerButton.IsEnabled = true;
+                ChatDisplay.Items.Add(
+                    "Error: Python server is not running. Click 'Start Server' or run: " +
+                    "cd AIEngine/PythonBridge && python fastapi_bridge.py");
+            }
+            catch (TaskCanceledException)
+            {
+                ServerStatusDot.Fill = Brushes.Red;
+                ServerStatusText.Text = "Server: Offline";
+                StartServerButton.IsEnabled = true;
+                ChatDisplay.Items.Add(
+                    "Error: Request timed out. The Python server may not be running. " +
+                    "Click 'Start Server' or run: cd AIEngine/PythonBridge && python fastapi_bridge.py");
             }
             catch (Exception ex)
             {

@@ -33,6 +33,7 @@ namespace ArbiterHost
         private static readonly HttpClient _httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
         private const string PythonApiBase = "http://127.0.0.1:8000";
         private const int MaxServerStartupSeconds = 30;
+        private const int MaxServerOutputChars = 800;
         private Process? _serverProcess;
 
         // ── Build output pop-out ──────────────────────────────────────────────
@@ -347,16 +348,19 @@ namespace ArbiterHost
                     return;
                 }
 
-                // Stream stdout and stderr to the Server console tab in real-time
+                // Collect output/errors so they can be shown directly in the error dialog
+                var serverOutput = new System.Text.StringBuilder();
                 _serverProcess.OutputDataReceived += (_, args) =>
                 {
-                    if (args.Data != null)
-                        Dispatcher.Invoke(() => AppendConsole(ServerConsoleBox, args.Data));
+                    if (args.Data == null) return;
+                    serverOutput.AppendLine(args.Data);
+                    Dispatcher.Invoke(() => AppendConsole(ServerConsoleBox, args.Data));
                 };
                 _serverProcess.ErrorDataReceived += (_, args) =>
                 {
-                    if (args.Data != null)
-                        Dispatcher.Invoke(() => AppendConsole(ServerConsoleBox, args.Data));
+                    if (args.Data == null) return;
+                    serverOutput.AppendLine(args.Data);
+                    Dispatcher.Invoke(() => AppendConsole(ServerConsoleBox, args.Data));
                 };
                 _serverProcess.BeginOutputReadLine();
                 _serverProcess.BeginErrorReadLine();
@@ -369,13 +373,29 @@ namespace ArbiterHost
 
                     if (_serverProcess.HasExited)
                     {
-                        await Task.Delay(300); // let remaining output lines flush
+                        await Task.Delay(500); // let remaining output lines flush
+                        AppendConsole(AppConsoleBox, $"Server exited (code {_serverProcess.ExitCode}).");
+
+                        // Include the last captured output lines in the dialog so the user
+                        // can see the exact Python error without navigating to the Server tab.
+                        string captured = serverOutput.ToString().Trim();
+                        const int maxChars = MaxServerOutputChars;
+                        if (captured.Length > maxChars)
+                            captured = "…\n" + captured[^maxChars..];
+
+                        string detail = string.IsNullOrEmpty(captured)
+                            ? "No output captured — check the Console → Server tab."
+                            : captured;
+
                         string msg = $"The Python server process exited unexpectedly " +
                                      $"(exit code {_serverProcess.ExitCode}).\n\n" +
-                                     "See the Console → Server tab for details.\n\n" +
-                                     "Make sure all dependencies are installed:\n" +
-                                     "  pip install -r AIEngine/PythonBridge/requirements.txt";
-                        AppendConsole(AppConsoleBox, $"Server exited (code {_serverProcess.ExitCode}).");
+                                     "Python output:\n" +
+                                     "──────────────────────────────\n" +
+                                     detail + "\n" +
+                                     "──────────────────────────────\n\n" +
+                                     "If packages are missing, run:\n" +
+                                     "  pip install -r AIEngine/PythonBridge/requirements.txt\n\n" +
+                                     "The server will attempt to install them automatically on next start.";
                         MessageBox.Show(msg, "Server Exited", MessageBoxButton.OK, MessageBoxImage.Error);
                         SetServerOffline();
                         return;

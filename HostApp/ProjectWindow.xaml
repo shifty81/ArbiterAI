@@ -3,9 +3,10 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Arbiter Project" Height="850" Width="1200"
         WindowStartupLocation="CenterScreen"
+        Background="{DynamicResource PanelBgBrush}"
         Loaded="Window_Loaded"
         Closing="Window_Closing">
-    <Grid>
+    <Grid Background="{StaticResource PanelBgBrush}">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>           <!-- top bar wraps to content -->
             <RowDefinition Height="*" MinHeight="150"/>  <!-- chat + suggestions -->

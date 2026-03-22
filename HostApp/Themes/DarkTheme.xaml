@@ -28,7 +28,7 @@
 
     <!-- ===== Window ===== -->
     <Style TargetType="Window">
-        <Setter Property="Background" Value="{StaticResource DarkBgBrush}"/>
+        <Setter Property="Background" Value="{StaticResource PanelBgBrush}"/>
         <Setter Property="Foreground" Value="{StaticResource ForegroundBrush}"/>
     </Style>
 
@@ -432,7 +432,7 @@
 
     <!-- ===== GridSplitter ===== -->
     <Style TargetType="GridSplitter">
-        <Setter Property="Background"    Value="{StaticResource BorderBrush}"/>
+        <Setter Property="Background"    Value="{StaticResource PanelBgBrush}"/>
         <Setter Property="ShowsPreview"  Value="True"/>
     </Style>
 

@@ -68,7 +68,8 @@ ArbiterAI/
 | Hardware-aware LLM loading | ✅ Phase 0 |
 | Code generation & approval | ✅ Phase 0 |
 | Roadmap / task planning | ✅ Phase 0 |
-| Local LLM inference (GGUF) | 🔧 Configure model path |
+| Automated model download | ✅ Phase 0 |
+| Local LLM inference (GGUF) | ✅ Auto-discovered from model folder |
 | Build + run + test loop | 📋 Phase 1 |
 | Google Drive workspace | 📋 Phase 2 |
 | Visual Studio VSIX extension | 📋 Phase 3 |
@@ -97,29 +98,46 @@ git clone https://github.com/shifty81/ArbiterAI.git
 cd ArbiterAI
 ```
 
-### 2. Set up the Python bridge
+### 2. One-click automated setup *(recommended)*
+
+```bash
+python setup_arbiter.py
+```
+
+This single command will:
+- Install all Python dependencies
+- Detect your GPU / available VRAM
+- Download the best-fit GGUF model automatically to `AIEngine/LLaMA2-13B/`
+- Write the model path to a local `.env` file
+
+### 3. Start the Python bridge
 
 ```bash
 cd AIEngine/PythonBridge
-pip install -r requirements.txt
 python fastapi_bridge.py
 ```
 
-The bridge will start at `http://127.0.0.1:8000`.
-
-### 3. (Optional) Configure a local LLM
-
-Download a GGUF model and set the environment variable:
-
-```
-ARBITER_MODEL_PATH=C:\path\to\your-model.gguf
-```
-
-See `AIEngine/LLaMA2-13B/README.md` for model recommendations.
+The bridge starts at `http://127.0.0.1:8000`.  
+If a model was downloaded in step 2 it will be loaded automatically — no environment variable needed.
 
 ### 4. Build and run the Windows app
 
 Open `Arbiter.sln` in Visual Studio 2022, restore NuGet packages, and press **F5**.
+
+---
+
+### Manual model setup *(alternative)*
+
+If you prefer to download a model yourself:
+
+1. Download a GGUF file from [HuggingFace TheBloke](https://huggingface.co/TheBloke)
+2. Place it in `AIEngine/LLaMA2-13B/`
+3. *(Optional)* Set the environment variable to override auto-detection:
+   ```
+   ARBITER_MODEL_PATH=C:\path\to\your-model.gguf
+   ```
+
+See `AIEngine/LLaMA2-13B/README.md` for the full model compatibility table.
 
 ---
 
@@ -131,6 +149,9 @@ Open `Arbiter.sln` in Visual Studio 2022, restore NuGet packages, and press **F5
 | `/status` | GET | GPU, VRAM, model, token limit info |
 | `/chat` | POST | Send a message, get Arbiter's response + TTS |
 | `/history/{project}` | GET | Retrieve conversation history for a project |
+| `/models` | GET | List recommended + already-downloaded models |
+| `/models/download` | POST | Start async model download (auto or explicit) |
+| `/models/download/status` | GET | Poll current download progress |
 
 ### Chat request example
 
@@ -143,6 +164,16 @@ POST /chat
   "voice": "British_Female"
 }
 ```
+
+### Model download example
+
+```json
+POST /models/download
+{ "auto": true }
+```
+
+Auto-selects and downloads the best model for your hardware.
+Poll `GET /models/download/status` until `"running": false`.
 
 ---
 

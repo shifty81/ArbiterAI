@@ -1,6 +1,6 @@
 """
 Arbiter AI — FastAPI Python Bridge
-Handles chat requests, LLM inference, and TTS voice output.
+Handles chat requests, LLM inference, TTS voice output, and model management.
 """
 
 import re
@@ -10,6 +10,14 @@ from pydantic import BaseModel
 import sqlite3
 from llm_interface import generate_response
 from VoiceManager import speak
+from model_downloader import (
+    detect_vram_gb,
+    recommend_model,
+    list_downloaded_models,
+    start_background_download,
+    get_download_status,
+    DEFAULT_MODEL_DIR,
+)
 
 # Resolve memory path relative to this script's location
 SCRIPT_DIR = Path(__file__).parent
@@ -34,6 +42,12 @@ class StatusResponse(BaseModel):
     gpu: str
     vram_gb: float
     max_tokens: int
+
+
+class DownloadRequest(BaseModel):
+    repo_id: str = ""
+    filename: str = ""
+    auto: bool = True
 
 
 def _validate_project_name(project_name: str) -> None:
@@ -132,6 +146,45 @@ def history(project_name: str):
     ).fetchall()
     conn.close()
     return [{"role": r, "message": m, "timestamp": t} for r, m, t in rows]
+
+
+@app.get("/models")
+def list_models():
+    """Return recommended model for detected hardware and list of already-downloaded models."""
+    vram = detect_vram_gb()
+    return {
+        "vram_gb": round(vram, 2),
+        "recommended": recommend_model(vram),
+        "downloaded": list_downloaded_models(DEFAULT_MODEL_DIR),
+    }
+
+
+@app.post("/models/download")
+def download_model_endpoint(req: DownloadRequest):
+    """
+    Start an async model download in the background.
+
+    - If ``auto`` is ``true`` (default) the best model for the current hardware
+      is selected automatically.
+    - Otherwise supply ``repo_id`` and ``filename`` explicitly.
+
+    Poll ``GET /models/download/status`` for progress.
+    """
+    started = start_background_download(
+        repo_id=req.repo_id,
+        filename=req.filename,
+        auto=req.auto,
+        destination_dir=DEFAULT_MODEL_DIR,
+    )
+    if not started:
+        return {"status": "already_running", "detail": get_download_status()}
+    return {"status": "started"}
+
+
+@app.get("/models/download/status")
+def download_status_endpoint():
+    """Return the current model download progress and status."""
+    return get_download_status()
 
 
 if __name__ == "__main__":

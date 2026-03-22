@@ -5,7 +5,6 @@ Supports local LLaMA-style models via llama-cpp-python or transformers.
 """
 
 import os
-from typing import Optional
 
 _model = None
 _tokenizer = None
@@ -24,12 +23,47 @@ def _detect_vram_gb() -> float:
     return 0.0
 
 
+def _find_model_in_default_dir() -> str:
+    """
+    Scan the default model directory for .gguf files.
+    Prefers the file that matches the hardware-recommended model name;
+    falls back to the first .gguf found.
+    Returns an empty string if none exist.
+    """
+    try:
+        from model_downloader import DEFAULT_MODEL_DIR, recommend_model, detect_vram_gb
+    except ImportError:
+        return ""
+
+    if not DEFAULT_MODEL_DIR.exists():
+        return ""
+
+    gguf_files = sorted(DEFAULT_MODEL_DIR.glob("*.gguf"))
+    if not gguf_files:
+        return ""
+
+    # Prefer the hardware-recommended model if it is present
+    vram = detect_vram_gb()
+    preferred = recommend_model(vram)["filename"]
+    preferred_path = DEFAULT_MODEL_DIR / preferred
+    if preferred_path.exists():
+        return str(preferred_path)
+
+    return str(gguf_files[0])
+
+
 def _load_model():
     global _model, _tokenizer
     if _model is not None:
         return
 
+    # 1. Explicit override via environment variable
     model_path = os.environ.get("ARBITER_MODEL_PATH", "")
+
+    # 2. Auto-discover any .gguf in the standard model folder
+    if not model_path or not os.path.exists(model_path):
+        model_path = _find_model_in_default_dir()
+
     vram = _detect_vram_gb()
 
     # Try llama-cpp-python first (most efficient for local LLMs)
@@ -45,7 +79,7 @@ def _load_model():
 
     # Fallback: stub responder (no model installed)
     print("[LLM] No model configured — using stub responder. "
-          "Set ARBITER_MODEL_PATH to a GGUF file to enable real inference.")
+          "Run setup_arbiter.py or POST /models/download to download a model automatically.")
     _model = "stub"
 
 

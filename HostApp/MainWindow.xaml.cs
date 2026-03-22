@@ -31,7 +31,7 @@ namespace ArbiterHost
 
         // ── Python server ─────────────────────────────────────────────────────
         private static readonly HttpClient _httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
-        private const string PythonApiBase = "http://127.0.0.1:8000";
+        private static string PythonApiBase => AppConfig.ApiBaseUrl;
         private const int MaxServerStartupSeconds = 30;
         private const int MaxServerOutputChars = 800;
         private Process? _serverProcess;

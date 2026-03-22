@@ -49,8 +49,6 @@ class AgenticResult:
 class AgenticChatEngine:
     """Drives the agentic loop: plan → execute file edits → summarize."""
 
-    _MAX_FILES = 10
-
     def __init__(self, llm: BaseLLM, base_dir: Path, project_path: str = "") -> None:
         self.llm = llm
         self.base_dir = base_dir.resolve()

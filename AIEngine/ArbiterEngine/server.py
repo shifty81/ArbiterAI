@@ -67,6 +67,7 @@ _PERSONAS = [
     "ai_ml_engineer",
 ]
 _active_personas: dict[str, str] = {}
+_MAX_CHAT_HISTORY_TURNS = 40
 
 # ── FastAPI app ───────────────────────────────────────────────────────────────
 app = FastAPI(title="Arbiter Engine", version="0.2.0")
@@ -176,11 +177,11 @@ def chat(msg: UserMessage) -> dict:
         logger.error("Agent error: %s", exc)
         response = f"[Arbiter Engine error] {exc}"
 
-    # Persist history (keep last 40 turns to avoid unbounded growth)
+    # Persist history (keep last _MAX_CHAT_HISTORY_TURNS turns)
     history.append({"role": "user", "content": msg.message})
     history.append({"role": "assistant", "content": response})
-    if len(history) > 40:
-        history[:] = history[-40:]
+    if len(history) > _MAX_CHAT_HISTORY_TURNS:
+        history[:] = history[-_MAX_CHAT_HISTORY_TURNS:]
 
     return {"response": response, "persona": persona}
 
@@ -193,7 +194,7 @@ def history(project_name: str) -> dict:
 @app.get("/models")
 def list_models() -> dict:
     try:
-        models = _llm.list_models()  # type: ignore[attr-defined]
+        models = _llm.list_models() if hasattr(_llm, "list_models") else []
     except Exception:
         models = []
     return {"models": models, "active_backend": _backend}

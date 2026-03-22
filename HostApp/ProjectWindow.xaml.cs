@@ -25,7 +25,7 @@ namespace ArbiterHost
         private bool _personaSelectorChanging = false;
 
         private static readonly HttpClient httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
-        private const string PythonApiBase = "http://127.0.0.1:8000";
+        private static string PythonApiBase => AppConfig.ApiBaseUrl;
         private const int MaxServerStartupSeconds = 30;
 
         private readonly GitManager gitManager = new GitManager();

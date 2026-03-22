@@ -71,6 +71,7 @@ ArbiterAI/
 | Automated model download | ✅ Phase 0 |
 | Local LLM inference (GGUF) | ✅ Auto-discovered from model folder |
 | Build + run + test loop | ✅ Phase 1 |
+| **Persona system** (Arbiter / Coder / Teacher / Organizer) | ✅ **Phase 1** |
 | Google Drive workspace | 📋 Phase 2 |
 | Visual Studio VSIX extension | 📋 Phase 3 |
 | Knowledge archive (PDF, docs) | 📋 Phase 3 |
@@ -186,6 +187,9 @@ pip install llama-cpp-python --extra-index-url https://abetlen.github.io/llama-c
 | `/health` | GET | Health check |
 | `/status` | GET | GPU, VRAM, model, token limit info |
 | `/llm/status` | GET | Active LLM backend: `gguf`, `ollama`, or `stub` |
+| `/personas` | GET | List all available personas |
+| `/persona/{project}` | GET | Get the active persona for a project |
+| `/persona/{project}` | POST | Set the active persona for a project |
 | `/chat` | POST | Send a message, get Arbiter's response + TTS |
 | `/history/{project}` | GET | Retrieve conversation history for a project |
 | `/models` | GET | List recommended + already-downloaded models |
@@ -207,6 +211,17 @@ POST /chat
   "voice": "British_Female"
 }
 ```
+
+### Persona switching example
+
+```json
+POST /persona/SpaceGame
+{ "persona": "Coder" }
+```
+
+Built-in personas: **Arbiter** (default), **Coder**, **Teacher**, **Organizer**.
+Each persona shapes Arbiter's system prompt and response style.
+The active persona is persisted per project in the project's SQLite database.
 
 ### Model download example
 
@@ -240,10 +255,11 @@ Poll `GET /models/download/status` until `"running": false`.
 ```
 Phase 0  — Chat + Voice + Workspace + Git                  ✅ Complete
 Phase 1  — Build loop + error fix + test runner            ✅ Complete
+           Persona system (Coder / Teacher / Organizer)    ✅ Complete
 Phase 2  — Google Drive workspace + cloud sync
 Phase 3  — Knowledge archive + PDF + VS VSIX
 Phase 4  — Image / audio generation + multimodal
-Phase 5  — Multi-agent + persona system
+Phase 5  — Multi-agent system
 ```
 
 ---

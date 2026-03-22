@@ -168,9 +168,33 @@ def preload_model() -> None:
     _load_model()
 
 
-def generate_response(message: str, project: str, max_tokens: int = 512) -> str:
-    """Generate a response from Arbiter's LLM."""
+def generate_response(
+    message: str,
+    project: str,
+    max_tokens: int = 512,
+    system_prompt: str = "",
+) -> str:
+    """Generate a response from Arbiter's LLM.
+
+    Args:
+        message:       The user's input message.
+        project:       The active project name (used in the default system prompt).
+        max_tokens:    Maximum number of tokens to generate.
+        system_prompt: Optional override for the system prompt.  When empty the
+                       default Arbiter persona prompt is used.
+    """
     _load_model()
+
+    if not system_prompt:
+        try:
+            from persona_manager import get_system_prompt, DEFAULT_PERSONA
+            system_prompt = get_system_prompt(DEFAULT_PERSONA, project)
+        except ImportError:
+            system_prompt = (
+                "You are Arbiter, a personal autonomous AI development assistant. "
+                "You are precise, technical, and explain your reasoning clearly. "
+                f"You are currently working on the project: {project}."
+            )
 
     if _model == "stub" or _model is None:
         return (
@@ -182,11 +206,6 @@ def generate_response(message: str, project: str, max_tokens: int = 512) -> str:
     # ── Ollama inference ──────────────────────────────────────────────────────
     if _model == "ollama":
         try:
-            system_prompt = (
-                "You are Arbiter, a personal autonomous AI development assistant. "
-                "You are precise, technical, and explain your reasoning like a teacher. "
-                f"You are currently working on the project: {project}."
-            )
             payload = json.dumps({
                 "model": _ollama_model_name,
                 "messages": [
@@ -208,11 +227,6 @@ def generate_response(message: str, project: str, max_tokens: int = 512) -> str:
 
     # ── llama-cpp-python inference ────────────────────────────────────────────
     try:
-        system_prompt = (
-            "You are Arbiter, a personal autonomous AI development assistant. "
-            "You are precise, technical, and explain your reasoning like a teacher. "
-            f"You are currently working on the project: {project}."
-        )
         prompt = f"<s>[INST] <<SYS>>\n{system_prompt}\n<</SYS>>\n\n{message} [/INST]"
         output = _model(prompt, max_tokens=max_tokens, stop=["</s>", "[INST]"])
         return output["choices"][0]["text"].strip()

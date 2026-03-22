@@ -21,6 +21,8 @@ namespace ArbiterHost
     {
         public string ProjectName { get; private set; }
         public string CurrentProjectPath { get; private set; }
+        private string _activePersona = "Arbiter";
+        private bool _personaSelectorChanging = false;
 
         private static readonly HttpClient httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
         private const string PythonApiBase = "http://127.0.0.1:8000";
@@ -51,6 +53,7 @@ namespace ArbiterHost
         {
             AppendConsole(AppConsoleBox, $"Project '{ProjectName}' opened. Path: {CurrentProjectPath}");
             await CheckServerStatusAsync();
+            await LoadPersonaSelectorAsync();
         }
 
         private void Window_Closing(object sender, System.ComponentModel.CancelEventArgs e)
@@ -318,6 +321,92 @@ namespace ArbiterHost
             }
         }
 
+        // ── Persona selector ──────────────────────────────────────────────────
+
+        /// <summary>
+        /// Populates the Persona selector from GET /personas and selects the
+        /// current persona for this project from GET /persona/{project}.
+        /// </summary>
+        private async Task LoadPersonaSelectorAsync()
+        {
+            try
+            {
+                // 1. Fetch all available personas
+                var personasResp = await httpClient.GetAsync(PythonApiBase + "/personas");
+                if (!personasResp.IsSuccessStatusCode) return;
+
+                string personasJson = await personasResp.Content.ReadAsStringAsync();
+                using var personasDoc = JsonDocument.Parse(personasJson);
+                var personasArr = personasDoc.RootElement.GetProperty("personas");
+
+                _personaSelectorChanging = true;
+                PersonaSelector.Items.Clear();
+                foreach (var p in personasArr.EnumerateArray())
+                {
+                    string name = p.GetProperty("name").GetString() ?? string.Empty;
+                    PersonaSelector.Items.Add(new ComboBoxItem { Content = name, Tag = name });
+                }
+
+                // 2. Fetch the active persona for this project
+                var activeResp = await httpClient.GetAsync(
+                    PythonApiBase + "/persona/" + Uri.EscapeDataString(ProjectName));
+                if (activeResp.IsSuccessStatusCode)
+                {
+                    string activeJson = await activeResp.Content.ReadAsStringAsync();
+                    using var activeDoc = JsonDocument.Parse(activeJson);
+                    _activePersona = activeDoc.RootElement.GetProperty("persona").GetString()
+                                     ?? "Arbiter";
+                }
+
+                // 3. Select the matching item
+                foreach (ComboBoxItem item in PersonaSelector.Items)
+                {
+                    if (item.Tag?.ToString() == _activePersona)
+                    {
+                        PersonaSelector.SelectedItem = item;
+                        break;
+                    }
+                }
+                if (PersonaSelector.SelectedItem == null && PersonaSelector.Items.Count > 0)
+                    PersonaSelector.SelectedIndex = 0;
+
+                _personaSelectorChanging = false;
+                AppendConsole(AppConsoleBox, $"Persona loaded: {_activePersona}");
+            }
+            catch
+            {
+                _personaSelectorChanging = false;
+                // Server may not be running yet — persona selector stays empty
+            }
+        }
+
+        private async void PersonaSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (_personaSelectorChanging) return;
+            if (PersonaSelector.SelectedItem is not ComboBoxItem item) return;
+            string persona = item.Tag?.ToString() ?? item.Content?.ToString() ?? string.Empty;
+            if (string.IsNullOrEmpty(persona) || persona == _activePersona) return;
+
+            try
+            {
+                var payload = new { persona };
+                string json = JsonSerializer.Serialize(payload);
+                var content = new StringContent(json, Encoding.UTF8, "application/json");
+                var resp = await httpClient.PostAsync(
+                    PythonApiBase + "/persona/" + Uri.EscapeDataString(ProjectName), content);
+                if (resp.IsSuccessStatusCode)
+                {
+                    _activePersona = persona;
+                    AppendConsole(AppConsoleBox, $"Persona switched to: {persona}");
+                    ChatDisplay.Items.Add($"[System] Persona switched to '{persona}'.");
+                }
+            }
+            catch (Exception ex)
+            {
+                AppendConsole(AppConsoleBox, $"Persona switch failed: {ex.Message}");
+            }
+        }
+
         private async void SendButton_Click(object sender, RoutedEventArgs e)
         {
             string message = ChatInput.Text.Trim();
@@ -349,7 +438,18 @@ namespace ArbiterHost
                 using var doc = JsonDocument.Parse(responseString);
                 string arbiterResponse = doc.RootElement.GetProperty("response").GetString() ?? string.Empty;
 
-                ChatDisplay.Items.Add($"Arbiter: {arbiterResponse}");
+                // Update active persona if the server reports a change
+                if (doc.RootElement.TryGetProperty("persona", out var personaProp))
+                {
+                    string serverPersona = personaProp.GetString() ?? string.Empty;
+                    if (!string.IsNullOrEmpty(serverPersona) && serverPersona != _activePersona)
+                    {
+                        _activePersona = serverPersona;
+                        AppendConsole(AppConsoleBox, $"Persona confirmed: {serverPersona}");
+                    }
+                }
+
+                ChatDisplay.Items.Add($"{_activePersona}: {arbiterResponse}");
                 SuggestionsListBox.Items.Add(arbiterResponse);
 
                 ChatDisplay.ScrollIntoView(ChatDisplay.Items[ChatDisplay.Items.Count - 1]);

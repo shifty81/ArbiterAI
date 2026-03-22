@@ -93,6 +93,12 @@ from pydantic import BaseModel
 import sqlite3
 from llm_interface import generate_response, get_model_status, preload_model
 from VoiceManager import speak
+from persona_manager import (
+    get_active_persona,
+    set_active_persona,
+    get_system_prompt,
+    list_personas,
+)
 from model_downloader import (
     detect_vram_gb,
     recommend_model,
@@ -133,6 +139,10 @@ class UserMessage(BaseModel):
     project: str
     use_voice: bool = False
     voice: str = "British_Female"
+
+
+class PersonaRequest(BaseModel):
+    persona: str
 
 
 class StatusResponse(BaseModel):
@@ -313,6 +323,42 @@ def llm_status():
     return get_model_status()
 
 
+# ── Persona endpoints ─────────────────────────────────────────────────────────
+
+@app.get("/personas")
+def get_personas():
+    """Return the list of all available personas."""
+    return {"personas": list_personas()}
+
+
+@app.get("/persona/{project_name}")
+def get_project_persona(project_name: str):
+    """Return the active persona for *project_name*."""
+    conn = get_db(project_name)
+    persona = get_active_persona(conn)
+    conn.close()
+    return {"persona": persona}
+
+
+@app.post("/persona/{project_name}")
+def set_project_persona(project_name: str, req: PersonaRequest):
+    """Set the active persona for *project_name*.
+
+    The persona name must be one of the built-in personas returned by
+    ``GET /personas``.  Returns ``{"persona": "<new_name>"}`` on success.
+    """
+    conn = get_db(project_name)
+    try:
+        set_active_persona(conn, req.persona)
+    except ValueError as exc:
+        conn.close()
+        raise HTTPException(status_code=400, detail=str(exc))
+    conn.close()
+    return {"persona": req.persona}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+
 @app.post("/chat")
 def chat(msg: UserMessage):
     conn = get_db(msg.project)
@@ -323,7 +369,9 @@ def chat(msg: UserMessage):
     )
     conn.commit()
 
-    response = generate_response(msg.message, msg.project)
+    persona = get_active_persona(conn)
+    system_prompt = get_system_prompt(persona, msg.project)
+    response = generate_response(msg.message, msg.project, system_prompt=system_prompt)
 
     c.execute(
         "INSERT INTO conversation (role, message) VALUES (?, ?)",
@@ -335,7 +383,7 @@ def chat(msg: UserMessage):
     if msg.use_voice:
         speak(response, msg.voice)
 
-    return {"response": response}
+    return {"response": response, "persona": persona}
 
 
 @app.get("/history/{project_name}")

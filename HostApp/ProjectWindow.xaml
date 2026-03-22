@@ -19,6 +19,10 @@
             <TextBlock Text="Phase:" VerticalAlignment="Center" Margin="5"/>
             <ComboBox Name="PhaseSelector" Width="120" Margin="5"/>
             <Separator Width="10"/>
+            <TextBlock Text="Persona:" VerticalAlignment="Center" Margin="5"/>
+            <ComboBox Name="PersonaSelector" Width="120" Margin="5"
+                      SelectionChanged="PersonaSelector_SelectionChanged"/>
+            <Separator Width="10"/>
             <Button Content="Commit" Margin="2" Click="Commit_Click"/>
             <Button Content="Branch" Margin="2" Click="Branch_Click"/>
             <Button Content="Push"   Margin="2" Click="Push_Click"/>

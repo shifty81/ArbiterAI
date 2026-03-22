@@ -341,40 +341,59 @@ def _get_whisper_model():
     return _whisper_model
 
 
-@app.post("/stt")
-async def speech_to_text(file: UploadFile = File(...)):
-    """
-    Transcribe uploaded audio to text using OpenAI Whisper.
+# The /stt route requires python-multipart (for UploadFile / File).
+# FastAPI 0.115+ validates this dependency at route-registration time, so if the
+# package is missing the entire server would crash on startup.  We wrap the
+# registration in a try/except so the server still starts and returns a clear
+# 503 error when /stt is called without the optional dependency installed.
+try:
+    @app.post("/stt")
+    async def speech_to_text(file: UploadFile = File(...)):
+        """
+        Transcribe uploaded audio to text using OpenAI Whisper.
 
-    Accepts any audio format supported by Whisper (wav, mp3, m4a, ogg, etc.).
-    Returns ``{"text": "<transcription>"}`` on success.
-    Requires ``openai-whisper`` to be installed (see requirements.txt).
-    """
-    try:
-        import whisper  # type: ignore  # noqa: F401
-    except ImportError:
-        raise HTTPException(
-            status_code=501,
-            detail=(
-                "openai-whisper is not installed. "
-                "Install it with: pip install openai-whisper"
-            ),
-        )
+        Accepts any audio format supported by Whisper (wav, mp3, m4a, ogg, etc.).
+        Returns ``{"text": "<transcription>"}`` on success.
+        Requires ``openai-whisper`` to be installed (see requirements.txt).
+        """
+        try:
+            import whisper  # type: ignore  # noqa: F401
+        except ImportError:
+            raise HTTPException(
+                status_code=501,
+                detail=(
+                    "openai-whisper is not installed. "
+                    "Install it with: pip install openai-whisper"
+                ),
+            )
 
-    suffix = Path(file.filename or "audio.wav").suffix or ".wav"
-    audio_bytes = await file.read()
-    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-        tmp.write(audio_bytes)
-        tmp_path = tmp.name
+        suffix = Path(file.filename or "audio.wav").suffix or ".wav"
+        audio_bytes = await file.read()
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+            tmp.write(audio_bytes)
+            tmp_path = tmp.name
 
-    try:
-        model = _get_whisper_model()
-        result = model.transcribe(tmp_path)
-        text: str = result.get("text", "").strip()
-    finally:
-        os.unlink(tmp_path)
+        try:
+            model = _get_whisper_model()
+            result = model.transcribe(tmp_path)
+            text: str = result.get("text", "").strip()
+        finally:
+            os.unlink(tmp_path)
 
-    return {"text": text}
+        return {"text": text}
+
+except RuntimeError as _stt_reg_err:
+    # python-multipart (or another required package) is missing.
+    # Register a stub that explains what to install instead of crashing.
+    _stt_detail = (
+        f"Speech-to-text unavailable: {_stt_reg_err}. "
+        "Run: pip install python-multipart"
+    )
+    print(f"[Bridge] /stt route registration failed — {_stt_detail}")
+
+    @app.post("/stt")
+    async def speech_to_text():  # type: ignore[misc]
+        raise HTTPException(status_code=503, detail=_stt_detail)
 
 
 if __name__ == "__main__":

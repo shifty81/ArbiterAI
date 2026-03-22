@@ -10,6 +10,7 @@ using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
 using ArbiterHost.BuildInterface;
 using ArbiterHost.GitInterface;
@@ -527,6 +528,17 @@ namespace ArbiterHost
         }
 
         private const int SpeechRecognitionTimeoutSeconds = 10;
+
+        /// <summary>Pressing Enter (without Shift) sends the chat message.</summary>
+        private void ChatInput_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Enter && !e.IsRepeat &&
+                !e.KeyboardDevice.Modifiers.HasFlag(ModifierKeys.Shift))
+            {
+                e.Handled = true;
+                SendButton_Click(sender, new RoutedEventArgs());
+            }
+        }
 
         private async void MicButton_Click(object sender, RoutedEventArgs e)
         {

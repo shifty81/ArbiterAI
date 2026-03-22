@@ -9,6 +9,7 @@ import tempfile
 import os
 from pathlib import Path
 from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 import sqlite3
 from llm_interface import generate_response
@@ -27,8 +28,10 @@ SCRIPT_DIR = Path(__file__).parent
 MEMORY_ROOT = SCRIPT_DIR.parent.parent / "Memory" / "ConversationLogs"
 PROJECTS_ROOT = SCRIPT_DIR.parent.parent / "Projects"
 
-# Valid project name pattern: alphanumeric, dash, underscore only
-_PROJECT_NAME_RE = re.compile(r"^[\w\-]+$")
+# Valid project name pattern: alphanumeric, spaces, dashes, underscores,
+# and parentheses — covers names such as "Arbiter (Self)".
+# Dots and path-separators are intentionally excluded to prevent traversal.
+_PROJECT_NAME_RE = re.compile(r"^[\w ()\-]+$")
 
 # Build/run/test constants
 _BUILD_ERROR_MAX_CHARS = 1000
@@ -149,6 +152,28 @@ def get_db(project_name: str) -> sqlite3.Connection:
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+@app.get("/", response_class=HTMLResponse)
+def web_ui():
+    """Serve the Arbiter AI ChatGPT-style web interface."""
+    html_path = SCRIPT_DIR / "static" / "index.html"
+    if html_path.exists():
+        return HTMLResponse(content=html_path.read_text(encoding="utf-8"))
+    return HTMLResponse(
+        content="<h1>Arbiter AI</h1><p>Web UI not found — ensure static/index.html exists.</p>",
+        status_code=200,
+    )
+
+
+@app.get("/projects")
+def list_projects():
+    """Return a sorted list of all project directories."""
+    if not PROJECTS_ROOT.exists():
+        return {"projects": []}
+    return {
+        "projects": [d.name for d in sorted(PROJECTS_ROOT.iterdir()) if d.is_dir()]
+    }
 
 
 @app.get("/status", response_model=StatusResponse)

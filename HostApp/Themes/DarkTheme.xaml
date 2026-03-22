@@ -21,6 +21,11 @@
     <SolidColorBrush x:Key="HighlightTextBrush" Color="#FFFFFFFF"/>  <!-- text on selection/highlight -->
     <SolidColorBrush x:Key="TransparentBrush"   Color="Transparent"/>
 
+    <!-- Drop-shadow used on panel cards (x:Shared="False" prevents WPF freeze-sharing issues) -->
+    <DropShadowEffect x:Key="PanelShadow" x:Shared="False"
+                      Color="Black" Direction="270"
+                      ShadowDepth="3" BlurRadius="8" Opacity="0.35"/>
+
     <!-- ===== Window ===== -->
     <Style TargetType="Window">
         <Setter Property="Background" Value="{StaticResource DarkBgBrush}"/>
@@ -57,7 +62,7 @@
                             Background="{TemplateBinding Background}"
                             BorderBrush="{TemplateBinding BorderBrush}"
                             BorderThickness="{TemplateBinding BorderThickness}"
-                            CornerRadius="2"
+                            CornerRadius="4"
                             Padding="{TemplateBinding Padding}"
                             SnapsToDevicePixels="True">
                         <ContentPresenter HorizontalAlignment="Center"
@@ -99,15 +104,41 @@
         <Setter Property="CaretBrush"      Value="{StaticResource ForegroundBrush}"/>
         <Setter Property="SelectionBrush"  Value="{StaticResource SelectionBrush}"/>
         <Setter Property="BorderThickness" Value="1"/>
-        <Setter Property="Padding"         Value="3,2"/>
-        <Style.Triggers>
-            <Trigger Property="IsReadOnly" Value="True">
-                <Setter Property="Background" Value="{StaticResource DarkBgBrush}"/>
-            </Trigger>
-            <Trigger Property="IsFocused" Value="True">
-                <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
-            </Trigger>
-        </Style.Triggers>
+        <Setter Property="Padding"         Value="4,3"/>
+        <!-- Explicit ControlTemplate forces the dark Background to be respected
+             even on Windows 10/11 where the default Aero2 template can override it. -->
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="TextBox">
+                    <Border x:Name="bd"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="4"
+                            SnapsToDevicePixels="True">
+                        <ScrollViewer x:Name="PART_ContentHost"
+                                      Margin="{TemplateBinding Padding}"
+                                      Focusable="False"
+                                      Background="Transparent"
+                                      HorizontalScrollBarVisibility="{TemplateBinding ScrollViewer.HorizontalScrollBarVisibility}"
+                                      VerticalScrollBarVisibility="{TemplateBinding ScrollViewer.VerticalScrollBarVisibility}"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.5"/>
+                        </Trigger>
+                        <Trigger Property="IsReadOnly" Value="True">
+                            <Setter TargetName="bd" Property="Background"
+                                    Value="{StaticResource DarkBgBrush}"/>
+                        </Trigger>
+                        <Trigger Property="IsFocused" Value="True">
+                            <Setter TargetName="bd" Property="BorderBrush"
+                                    Value="{StaticResource AccentBrush}"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
 
     <!-- ===== ListBox ===== -->
@@ -116,6 +147,24 @@
         <Setter Property="Foreground"      Value="{StaticResource ForegroundBrush}"/>
         <Setter Property="BorderBrush"     Value="{StaticResource BorderBrush}"/>
         <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="Padding"         Value="2"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ListBox">
+                    <Border x:Name="border"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="6"
+                            Padding="{TemplateBinding Padding}"
+                            SnapsToDevicePixels="True">
+                        <ScrollViewer Focusable="False" Padding="{TemplateBinding Padding}">
+                            <ItemsPresenter SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}"/>
+                        </ScrollViewer>
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
 
     <!-- ===== ListBoxItem ===== -->
@@ -313,7 +362,8 @@
                         <Border Grid.Row="0"
                                 Background="{StaticResource ControlBgBrush}"
                                 BorderBrush="{StaticResource BorderBrush}"
-                                BorderThickness="1,1,1,0">
+                                BorderThickness="1,1,1,0"
+                                CornerRadius="8,8,0,0">
                             <TabPanel x:Name="HeaderPanel"
                                       Background="Transparent"
                                       IsItemsHost="True"
@@ -325,6 +375,7 @@
                                 Background="{TemplateBinding Background}"
                                 BorderBrush="{TemplateBinding BorderBrush}"
                                 BorderThickness="1,0,1,1"
+                                CornerRadius="0,0,6,6"
                                 KeyboardNavigation.TabNavigation="Local"
                                 KeyboardNavigation.DirectionalNavigation="Contained"
                                 KeyboardNavigation.TabIndex="2">

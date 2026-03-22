@@ -58,10 +58,56 @@ namespace ArbiterHost
 
         private void Window_Closing(object sender, System.ComponentModel.CancelEventArgs e)
         {
+            bool serverRunning = _serverProcess != null && !_serverProcess.HasExited;
+            bool engineRunning = AppConfig.EngineProcess != null && !AppConfig.EngineProcess.HasExited;
+            bool hasUnsent     = !string.IsNullOrWhiteSpace(ChatInput.Text);
+
+            // Build a descriptive confirmation message
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("Are you sure you want to exit Arbiter?");
+
+            if (serverRunning || engineRunning)
+            {
+                sb.AppendLine();
+                sb.AppendLine("The following services will be stopped:");
+                if (serverRunning)
+                    sb.AppendLine("  •  Arbiter server  (port 8000)");
+                if (engineRunning)
+                    sb.AppendLine($"  •  Arbiter Engine  (port {AppConfig.ArbiterEnginePort})");
+            }
+
+            if (hasUnsent)
+            {
+                sb.AppendLine();
+                sb.AppendLine("⚠  You have an unsent message in the chat input.");
+            }
+
+            var answer = MessageBox.Show(
+                sb.ToString().TrimEnd(),
+                "Exit Arbiter",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question,
+                MessageBoxResult.No);
+
+            if (answer != MessageBoxResult.Yes)
+            {
+                e.Cancel = true;
+                return;
+            }
+
+            // Stop the bridge server (port 8000)
             try
             {
                 if (_serverProcess != null && !_serverProcess.HasExited)
                     _serverProcess.Kill(entireProcessTree: true);
+            }
+            catch { /* best-effort */ }
+
+            // Stop the Arbiter Engine server if one was started
+            try
+            {
+                if (AppConfig.EngineProcess != null && !AppConfig.EngineProcess.HasExited)
+                    AppConfig.EngineProcess.Kill(entireProcessTree: true);
             }
             catch { /* best-effort */ }
         }
@@ -151,6 +197,7 @@ namespace ArbiterHost
                 };
 
                 _serverProcess = Process.Start(psi);
+                AppConfig.BridgeProcess = _serverProcess; // register for app-level cleanup
 
                 if (_serverProcess == null)
                 {

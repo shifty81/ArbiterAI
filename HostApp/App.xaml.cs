@@ -21,6 +21,14 @@ namespace ArbiterHost
                     AppConfig.EngineProcess.Kill(entireProcessTree: true);
             }
             catch { /* best-effort */ }
+
+            // Terminate the ArbiterAI bridge server (port 8000) if we started it.
+            try
+            {
+                if (AppConfig.BridgeProcess != null && !AppConfig.BridgeProcess.HasExited)
+                    AppConfig.BridgeProcess.Kill(entireProcessTree: true);
+            }
+            catch { /* best-effort */ }
         }
     }
 }

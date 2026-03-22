@@ -173,6 +173,59 @@
         .llm-dot.stub    { background: #ef4444; }
         .llm-dot.loading { background: #f59e0b; animation: blink 1.4s infinite; }
 
+        /* ── Persona selector ── */
+        .persona-section {
+            padding: 14px 10px 6px;
+            font-size: 11px;
+            font-weight: 600;
+            color: #5e5e5e;
+            text-transform: uppercase;
+            letter-spacing: .06em;
+        }
+
+        .persona-list {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            padding: 0 4px;
+        }
+
+        .persona-btn {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            width: 100%;
+            padding: 8px 10px;
+            background: transparent;
+            border: none;
+            color: #c8c8c8;
+            cursor: pointer;
+            border-radius: 8px;
+            font-size: 13px;
+            text-align: left;
+            transition: background .15s, color .15s;
+        }
+        .persona-btn:hover { background: #232323; color: #fff; }
+        .persona-btn.active {
+            background: #1a2d3f;
+            color: #60b0ff;
+            font-weight: 600;
+        }
+        .persona-badge {
+            width: 20px; height: 20px; border-radius: 50%;
+            background: #2d2d2d;
+            border: 1px solid #3d3d3d;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 10px; flex-shrink: 0;
+        }
+        .persona-btn.active .persona-badge {
+            background: #0a2040;
+            border-color: #007acc;
+            color: #60b0ff;
+        }
+        .persona-name { font-size: 13px; }
+        .persona-desc { font-size: 10px; color: #5e5e5e; margin-top: 1px; }
+
         /* ── Model setup banner (shown when stub) ── */
         .model-banner {
             margin: 6px 4px 2px;
@@ -503,6 +556,11 @@
             <div class="sidebar-section">Projects</div>
             <div id="projectList"><div class="hint">Loading…</div></div>
 
+            <div class="persona-section">Persona</div>
+            <div class="persona-list" id="personaList">
+                <div class="hint">Loading…</div>
+            </div>
+
         </div>
 
         <div class="sidebar-footer">
@@ -549,6 +607,10 @@
                     <path d="M2 9h20" stroke="currentColor" stroke-width="1.5"/>
                 </svg>
                 <span id="headerProjectName">—</span>
+            </div>
+            <div class="project-badge" id="headerPersonaBadge"
+                 style="margin-left:8px;border-color:#1e3a5c;color:#60b0ff;">
+                <span id="headerPersonaName" style="font-size:12px;">Arbiter</span>
             </div>
         </div>
 
@@ -605,28 +667,31 @@
 "use strict";
 
 const API = window.location.origin;
-let activeProject = null;
-let isSending     = false;
+let activeProject  = null;
+let activePersona  = 'Arbiter';
+let isSending      = false;
 
 // DOM refs
-const projectList  = document.getElementById('projectList');
-const welcomeState = document.getElementById('welcomeState');
-const chatScroll   = document.getElementById('chatScroll');
-const inputArea    = document.getElementById('inputArea');
-const messagesInner= document.getElementById('messagesInner');
-const chatInput    = document.getElementById('chatInput');
-const sendBtn      = document.getElementById('sendBtn');
-const mainHeader   = document.getElementById('mainHeader');
-const headerName   = document.getElementById('headerProjectName');
-const statusDot    = document.getElementById('statusDot');
-const statusText   = document.getElementById('statusText');
-const llmDot       = document.getElementById('llmDot');
-const llmText      = document.getElementById('llmText');
-const modelBanner  = document.getElementById('modelBanner');
-const dlProgress   = document.getElementById('dlProgress');
-const dlBarFill    = document.getElementById('dlBarFill');
-const dlMsg        = document.getElementById('dlMsg');
-const downloadBtn  = document.getElementById('downloadModelBtn');
+const projectList      = document.getElementById('projectList');
+const personaList      = document.getElementById('personaList');
+const welcomeState     = document.getElementById('welcomeState');
+const chatScroll       = document.getElementById('chatScroll');
+const inputArea        = document.getElementById('inputArea');
+const messagesInner    = document.getElementById('messagesInner');
+const chatInput        = document.getElementById('chatInput');
+const sendBtn          = document.getElementById('sendBtn');
+const mainHeader       = document.getElementById('mainHeader');
+const headerName       = document.getElementById('headerProjectName');
+const headerPersonaName= document.getElementById('headerPersonaName');
+const statusDot        = document.getElementById('statusDot');
+const statusText       = document.getElementById('statusText');
+const llmDot           = document.getElementById('llmDot');
+const llmText          = document.getElementById('llmText');
+const modelBanner      = document.getElementById('modelBanner');
+const dlProgress       = document.getElementById('dlProgress');
+const dlBarFill        = document.getElementById('dlBarFill');
+const dlMsg            = document.getElementById('dlMsg');
+const downloadBtn      = document.getElementById('downloadModelBtn');
 
 /* ── Server health ──────────────────────────────────────────────────────────── */
 async function checkServer() {
@@ -761,6 +826,82 @@ async function loadProjects() {
 }
 loadProjects();
 
+/* ── Persona system ─────────────────────────────────────────────────────────── */
+
+// Emoji icons for each built-in persona
+const PERSONA_ICONS = {
+    'Arbiter':   '⚖',
+    'Coder':     '💻',
+    'Teacher':   '📚',
+    'Organizer': '📋',
+};
+
+let allPersonas = [];
+
+async function loadPersonas() {
+    try {
+        const r = await fetch(`${API}/personas`);
+        if (!r.ok) return;
+        const { personas } = await r.json();
+        allPersonas = personas;
+        renderPersonaList();
+    } catch {
+        personaList.innerHTML = '<div class="hint">Could not load personas</div>';
+    }
+}
+
+function renderPersonaList() {
+    personaList.innerHTML = '';
+    allPersonas.forEach(p => {
+        const btn = document.createElement('button');
+        btn.className = 'persona-btn' + (p.name === activePersona ? ' active' : '');
+        btn.dataset.persona = p.name;
+        const icon = PERSONA_ICONS[p.name] || '🤖';
+        btn.innerHTML =
+            `<div class="persona-badge">${icon}</div>
+             <div>
+                 <div class="persona-name">${esc(p.name)}</div>
+                 <div class="persona-desc">${esc(p.description)}</div>
+             </div>`;
+        btn.addEventListener('click', () => switchPersona(p.name));
+        personaList.appendChild(btn);
+    });
+}
+
+async function loadProjectPersona(project) {
+    try {
+        const r = await fetch(`${API}/persona/${encodeURIComponent(project)}`);
+        if (!r.ok) return;
+        const { persona } = await r.json();
+        setActivePersona(persona);
+    } catch { /* keep default */ }
+}
+
+async function switchPersona(name) {
+    if (!activeProject) return;
+    try {
+        const r = await fetch(`${API}/persona/${encodeURIComponent(activeProject)}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ persona: name }),
+        });
+        if (r.ok) {
+            const { persona } = await r.json();
+            setActivePersona(persona);
+        }
+    } catch { /* ignore */ }
+}
+
+function setActivePersona(name) {
+    activePersona = name;
+    headerPersonaName.textContent = name;
+    // Update sidebar active states
+    document.querySelectorAll('.persona-btn').forEach(btn =>
+        btn.classList.toggle('active', btn.dataset.persona === name));
+}
+
+loadPersonas();
+
 /* ── Select project ─────────────────────────────────────────────────────────── */
 async function selectProject(name) {
     activeProject = name;
@@ -780,6 +921,7 @@ async function selectProject(name) {
     sendBtn.disabled = true;
     chatInput.focus();
 
+    await loadProjectPersona(name);
     await loadHistory(name);
 }
 
@@ -854,8 +996,10 @@ async function doSend() {
             const err = await r.json().catch(() => ({}));
             appendMessage('arbiter', '⚠️ ' + (err.detail || `Server error ${r.status}`), true);
         } else {
-            const { response } = await r.json();
-            appendMessage('arbiter', response || '(no response)', true);
+            const data = await r.json();
+            // Keep activePersona in sync if the server returns it
+            if (data.persona) setActivePersona(data.persona);
+            appendMessage('arbiter', data.response || '(no response)', true);
         }
     } catch {
         typingEl.remove();
@@ -872,12 +1016,16 @@ async function doSend() {
 /* ── Render helpers ─────────────────────────────────────────────────────────── */
 function appendMessage(role, text, animate) {
     const isUser = role === 'user';
+    const personaLabel = activePersona || 'Arbiter';
+    const personaIcon  = PERSONA_ICONS[personaLabel] || '⚖';
     const g = document.createElement('div');
     g.className = 'msg-group' + (animate ? '' : ' no-anim');
     g.innerHTML =
         `<div class="msg-meta">
-             <div class="role-avatar ${isUser ? 'you-av' : 'ai-av'}">${isUser ? 'You' : 'AR'}</div>
-             <span class="role-name">${isUser ? 'You' : 'Arbiter'}</span>
+             <div class="role-avatar ${isUser ? 'you-av' : 'ai-av'}"
+                  aria-label="${isUser ? 'You' : esc(personaLabel)}"
+                  title="${isUser ? 'You' : esc(personaLabel)}">${isUser ? 'You' : personaIcon}</div>
+             <span class="role-name">${isUser ? 'You' : esc(personaLabel)}</span>
          </div>
          <div class="msg-body ${isUser ? 'you-body' : ''}">${fmt(text)}</div>`;
     messagesInner.appendChild(g);
@@ -885,12 +1033,16 @@ function appendMessage(role, text, animate) {
 }
 
 function appendTyping() {
+    const personaLabel = activePersona || 'Arbiter';
+    const personaIcon  = PERSONA_ICONS[personaLabel] || '⚖';
     const g = document.createElement('div');
     g.className = 'msg-group';
     g.innerHTML =
         `<div class="msg-meta">
-             <div class="role-avatar ai-av">AI</div>
-             <span class="role-name">Arbiter</span>
+             <div class="role-avatar ai-av"
+                  aria-label="${esc(personaLabel)}"
+                  title="${esc(personaLabel)}">${personaIcon}</div>
+             <span class="role-name">${esc(personaLabel)}</span>
          </div>
          <div class="typing-wrap">
              <div class="t-dot"></div>

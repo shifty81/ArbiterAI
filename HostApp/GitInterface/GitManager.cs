@@ -1,6 +1,9 @@
 using LibGit2Sharp;
+using LibGit2Sharp.Handlers;
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 
 namespace ArbiterHost.GitInterface
@@ -65,14 +68,55 @@ namespace ArbiterHost.GitInterface
             Commands.Checkout(repo, branchName);
         }
 
-        public void Push()
+        public void SetRemote(string url)
         {
-            // TODO: configure remote and credentials for push
+            if (repo == null) throw new InvalidOperationException("Repository not initialized.");
+            var existing = repo.Network.Remotes["origin"];
+            if (existing == null)
+                repo.Network.Remotes.Add("origin", url);
+            else
+                repo.Network.Remotes.Update("origin", r => r.Url = url);
         }
 
-        public void Pull()
+        public void Push(string? username = null, string? password = null)
         {
-            // TODO: configure remote and credentials for pull
+            if (repo == null) throw new InvalidOperationException("Repository not initialized.");
+            var remote = repo.Network.Remotes["origin"]
+                ?? throw new InvalidOperationException("No remote 'origin' configured. Use SetRemote first.");
+            var options = new PushOptions();
+            if (!string.IsNullOrEmpty(username))
+            {
+                string user = username;
+                string pass = password ?? string.Empty;
+                options.CredentialsProvider = (_, _, _) =>
+                    new UsernamePasswordCredentials { Username = user, Password = pass };
+            }
+            repo.Network.Push(remote, repo.Head.CanonicalName, options);
+        }
+
+        public void Pull(string? username = null, string? password = null)
+        {
+            if (repo == null) throw new InvalidOperationException("Repository not initialized.");
+            var options = new PullOptions { FetchOptions = new FetchOptions() };
+            if (!string.IsNullOrEmpty(username))
+            {
+                string user = username;
+                string pass = password ?? string.Empty;
+                options.FetchOptions.CredentialsProvider = (_, _, _) =>
+                    new UsernamePasswordCredentials { Username = user, Password = pass };
+            }
+            var merger = new Signature(authorName, authorEmail, DateTimeOffset.Now);
+            Commands.Pull(repo, merger, options);
+        }
+
+        private const int ShortShaLength = 7;
+
+        public IEnumerable<(string Sha, string Message, string Author, DateTimeOffset When)> GetLog(int limit = 20)
+        {
+            if (repo == null) throw new InvalidOperationException("Repository not initialized.");
+            return repo.Commits
+                .Take(limit)
+                .Select(c => (c.Sha.Substring(0, Math.Min(ShortShaLength, c.Sha.Length)), c.MessageShort.Trim(), c.Author.Name, c.Author.When));
         }
     }
 }

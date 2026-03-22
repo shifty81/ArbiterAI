@@ -61,16 +61,16 @@ ArbiterAI/
 |---|---|
 | Chat UI (ChatGPT-style) | ✅ Phase 0 |
 | Voice output (TTS) | ✅ Phase 0 |
-| Voice input (STT) | 🔧 Stub — integrate Whisper |
+| Voice input (STT) | ✅ Phase 0 — Windows System.Speech |
 | Project & workspace management | ✅ Phase 0 |
 | Drag-and-drop file workflow | ✅ Phase 0 |
-| Git integration (commit, branch) | ✅ Phase 0 |
+| Git integration (commit, branch, push, pull, log) | ✅ Phase 0 |
 | Hardware-aware LLM loading | ✅ Phase 0 |
 | Code generation & approval | ✅ Phase 0 |
 | Roadmap / task planning | ✅ Phase 0 |
 | Automated model download | ✅ Phase 0 |
 | Local LLM inference (GGUF) | ✅ Auto-discovered from model folder |
-| Build + run + test loop | 📋 Phase 1 |
+| Build + run + test loop | ✅ Phase 1 |
 | Google Drive workspace | 📋 Phase 2 |
 | Visual Studio VSIX extension | 📋 Phase 3 |
 | Knowledge archive (PDF, docs) | 📋 Phase 3 |
@@ -152,6 +152,10 @@ See `AIEngine/LLaMA2-13B/README.md` for the full model compatibility table.
 | `/models` | GET | List recommended + already-downloaded models |
 | `/models/download` | POST | Start async model download (auto or explicit) |
 | `/models/download/status` | GET | Poll current download progress |
+| `/build` | POST | Build the project (auto-detects command) |
+| `/run` | POST | Run the project entry point |
+| `/test` | POST | Run the project's test suite |
+| `/stt` | POST | Transcribe audio to text via Whisper |
 
 ### Chat request example
 
@@ -185,7 +189,7 @@ Poll `GET /models/download/status` until `"running": false`.
 | AI Bridge | Python FastAPI |
 | LLM Inference | llama-cpp-python (GGUF) |
 | TTS | pyttsx3 / Coqui TTS |
-| STT | Whisper (planned) |
+| STT | Windows System.Speech / openai-whisper |
 | Git | LibGit2Sharp |
 | Vector Search | Chroma / FAISS (planned) |
 | Agent Framework | LangChain / AutoGen (planned) |
@@ -195,8 +199,8 @@ Poll `GET /models/download/status` until `"running": false`.
 ## Roadmap
 
 ```
-Phase 0  — Chat + Voice + Workspace + Git                  ← Current
-Phase 1  — Build loop + error fix + test runner
+Phase 0  — Chat + Voice + Workspace + Git                  ✅ Complete
+Phase 1  — Build loop + error fix + test runner            ✅ Complete
 Phase 2  — Google Drive workspace + cloud sync
 Phase 3  — Knowledge archive + PDF + VS VSIX
 Phase 4  — Image / audio generation + multimodal

@@ -248,6 +248,12 @@
         </Setter>
     </Style>
 
+    <!-- ===== GridSplitter ===== -->
+    <Style TargetType="GridSplitter">
+        <Setter Property="Background"    Value="{StaticResource BorderBrush}"/>
+        <Setter Property="ShowsPreview"  Value="True"/>
+    </Style>
+
     <!-- ===== ScrollBar ===== -->
     <Style TargetType="ScrollBar">
         <Setter Property="Background" Value="{StaticResource PanelBgBrush}"/>

@@ -3,6 +3,51 @@ Arbiter AI — FastAPI Python Bridge
 Handles chat requests, LLM inference, TTS voice output, model management, STT, and build/run/test.
 """
 
+# ── Dependency bootstrap ──────────────────────────────────────────────────────
+# Must run before any third-party imports so the server can self-heal when the
+# user hasn't yet installed the requirements.
+import subprocess as _subprocess
+import sys as _sys
+import os as _os
+
+def _ensure_dependencies() -> None:
+    """Install requirements.txt dependencies if they are not already present."""
+    try:
+        import fastapi  # noqa: F401 — presence check only
+        return  # already installed
+    except ImportError:
+        pass
+
+    _req = _os.path.join(_os.path.dirname(__file__), "requirements.txt")
+    if not _os.path.exists(_req):
+        print(
+            f"[Arbiter] requirements.txt not found at: {_req}\n"
+            "Cannot auto-install dependencies. "
+            "Run: pip install fastapi uvicorn pydantic",
+            flush=True,
+        )
+        _sys.exit(1)
+    print(
+        "[Arbiter] Required Python packages are missing. "
+        "Installing from requirements.txt — please wait...",
+        flush=True,
+    )
+    result = _subprocess.run(
+        [_sys.executable, "-m", "pip", "install", "-r", _req],
+        capture_output=False,  # stream pip output so the C# console tab shows progress
+    )
+    if result.returncode != 0:
+        print(
+            "[Arbiter] pip install failed (see output above). "
+            "Run manually:  pip install -r AIEngine/PythonBridge/requirements.txt",
+            flush=True,
+        )
+        _sys.exit(1)
+    print("[Arbiter] Dependencies installed successfully.", flush=True)
+
+_ensure_dependencies()
+# ─────────────────────────────────────────────────────────────────────────────
+
 import re
 import subprocess
 import tempfile

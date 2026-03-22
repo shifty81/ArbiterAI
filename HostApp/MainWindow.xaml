@@ -6,7 +6,7 @@
         WindowStartupLocation="CenterScreen"
         Loaded="Window_Loaded"
         Closing="Window_Closing">
-    <Grid>
+    <Grid Background="{StaticResource PanelBgBrush}">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>               <!-- Top toolbar -->
             <RowDefinition Height="*" MinHeight="200"/>  <!-- Main content -->

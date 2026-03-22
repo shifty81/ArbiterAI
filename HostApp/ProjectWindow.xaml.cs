@@ -49,6 +49,7 @@ namespace ArbiterHost
 
         private async void Window_Loaded(object sender, RoutedEventArgs e)
         {
+            AppendConsole(AppConsoleBox, $"Project '{ProjectName}' opened. Path: {CurrentProjectPath}");
             await CheckServerStatusAsync();
         }
 
@@ -101,6 +102,7 @@ namespace ArbiterHost
             StartServerButton.IsEnabled = false;
             ServerStatusText.Text = "Server: starting\u2026";
             ServerStatusDot.Fill = Brushes.Orange;
+            AppendConsole(AppConsoleBox, "Server start requested.");
 
             try
             {
@@ -111,12 +113,11 @@ namespace ArbiterHost
 
                 if (!File.Exists(bridgePath))
                 {
-                    MessageBox.Show(
-                        $"Could not find fastapi_bridge.py at:\n{bridgePath}\n\nPlease start the Python server manually:\n  cd AIEngine/PythonBridge\n  python fastapi_bridge.py",
-                        "Server Not Found", MessageBoxButton.OK, MessageBoxImage.Warning);
-                    ServerStatusText.Text = "Server: Offline";
-                    ServerStatusDot.Fill = Brushes.Red;
-                    StartServerButton.IsEnabled = true;
+                    string msg = $"Could not find fastapi_bridge.py at:\n{bridgePath}\n\nPlease start the Python server manually:\n  cd AIEngine/PythonBridge\n  python fastapi_bridge.py";
+                    AppendConsole(ServerConsoleBox, "ERROR: " + msg);
+                    AppendConsole(AppConsoleBox, "Server not found — start it manually.");
+                    MessageBox.Show(msg, "Server Not Found", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    SetServerOffline();
                     return;
                 }
 
@@ -126,15 +127,18 @@ namespace ArbiterHost
                     MessageBox.Show(
                         "Could not determine the directory for fastapi_bridge.py.",
                         "Server Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                    ServerStatusText.Text = "Server: Offline";
-                    ServerStatusDot.Fill = Brushes.Red;
-                    StartServerButton.IsEnabled = true;
+                    SetServerOffline();
                     return;
                 }
 
+                string python = PythonHelper.FindExecutable();
+                AppendConsole(ServerConsoleBox, $"Python: {python}");
+                AppendConsole(ServerConsoleBox, $"Bridge: {bridgePath}");
+                AppendConsole(AppConsoleBox, $"Starting server with: {python} \"{bridgePath}\"");
+
                 var psi = new ProcessStartInfo
                 {
-                    FileName = "python",
+                    FileName = python,
                     Arguments = $"\"{bridgePath}\"",
                     WorkingDirectory = bridgeDir,
                     UseShellExecute = false,
@@ -147,15 +151,28 @@ namespace ArbiterHost
 
                 if (_serverProcess == null)
                 {
-                    ServerStatusText.Text = "Server: Offline";
-                    ServerStatusDot.Fill = Brushes.Red;
-                    StartServerButton.IsEnabled = true;
-                    MessageBox.Show(
-                        "Failed to start the Python server process. " +
-                        "Ensure Python is installed and in PATH.",
-                        "Start Server Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                    string msg = $"Failed to start the Python server process using '{python}'. " +
+                                 "Ensure Python is installed and in PATH.";
+                    AppendConsole(ServerConsoleBox, "ERROR: " + msg);
+                    AppendConsole(AppConsoleBox, "Server process failed to start.");
+                    MessageBox.Show(msg, "Start Server Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                    SetServerOffline();
                     return;
                 }
+
+                // Stream stdout and stderr to the Server console tab in real-time
+                _serverProcess.OutputDataReceived += (_, args) =>
+                {
+                    if (args.Data != null)
+                        Dispatcher.Invoke(() => AppendConsole(ServerConsoleBox, args.Data));
+                };
+                _serverProcess.ErrorDataReceived += (_, args) =>
+                {
+                    if (args.Data != null)
+                        Dispatcher.Invoke(() => AppendConsole(ServerConsoleBox, args.Data));
+                };
+                _serverProcess.BeginOutputReadLine();
+                _serverProcess.BeginErrorReadLine();
 
                 // Wait up to MaxServerStartupSeconds for the server to become available
                 bool serverOnline = false;
@@ -165,22 +182,15 @@ namespace ArbiterHost
 
                     if (_serverProcess.HasExited)
                     {
-                        string stderr = await _serverProcess.StandardError.ReadToEndAsync();
-                        string stdout = await _serverProcess.StandardOutput.ReadToEndAsync();
-                        string details = !string.IsNullOrWhiteSpace(stderr) ? stderr
-                                       : !string.IsNullOrWhiteSpace(stdout) ? stdout
-                                       : "(no output captured)";
-                        if (details.Length > 800) details = details[..800] + "…";
-                        ServerStatusDot.Fill = Brushes.Red;
-                        ServerStatusText.Text = "Server: Offline";
-                        StartServerButton.IsEnabled = true;
-                        MessageBox.Show(
-                            $"The Python server process exited unexpectedly " +
-                            $"(exit code {_serverProcess.ExitCode}).\n\n" +
-                            $"Output:\n{details}\n\n" +
-                            "Make sure all dependencies are installed:\n" +
-                            "  pip install -r AIEngine/PythonBridge/requirements.txt",
-                            "Server Exited", MessageBoxButton.OK, MessageBoxImage.Error);
+                        await Task.Delay(300); // let remaining output lines flush
+                        string msg = $"The Python server process exited unexpectedly " +
+                                     $"(exit code {_serverProcess.ExitCode}).\n\n" +
+                                     "See the Console → Server tab for details.\n\n" +
+                                     "Make sure all dependencies are installed:\n" +
+                                     "  pip install -r AIEngine/PythonBridge/requirements.txt";
+                        AppendConsole(AppConsoleBox, $"Server exited (code {_serverProcess.ExitCode}).");
+                        MessageBox.Show(msg, "Server Exited", MessageBoxButton.OK, MessageBoxImage.Error);
+                        SetServerOffline();
                         return;
                     }
 
@@ -198,30 +208,63 @@ namespace ArbiterHost
                 {
                     ServerStatusDot.Fill = Brushes.LimeGreen;
                     ServerStatusText.Text = "Server: Online";
+                    AppendConsole(ServerConsoleBox, $"Server online at {PythonApiBase}");
+                    AppendConsole(AppConsoleBox, "Server is online.");
                 }
                 else
                 {
-                    ServerStatusDot.Fill = Brushes.Red;
-                    ServerStatusText.Text = "Server: Offline";
-                    StartServerButton.IsEnabled = true;
-                    MessageBox.Show(
-                        $"The server process is running but has not responded after " +
-                        $"{MaxServerStartupSeconds} seconds.\n" +
-                        "It may still be loading. Click 'Start Server' to retry.",
-                        "Server Timeout", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    string msg = $"The server process is running but has not responded after " +
+                                 $"{MaxServerStartupSeconds} seconds.\n" +
+                                 "It may still be loading. Check Console → Server for details.";
+                    AppendConsole(AppConsoleBox, "Server startup timed out.");
+                    MessageBox.Show(msg, "Server Timeout", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    SetServerOffline();
                 }
             }
             catch (Exception ex)
             {
-                ServerStatusDot.Fill = Brushes.Red;
-                ServerStatusText.Text = "Server: Offline";
-                StartServerButton.IsEnabled = true;
-                MessageBox.Show(
-                    $"Failed to start Python server:\n{ex.Message}\n\n" +
-                    "Ensure Python is installed and in PATH, then start manually:\n" +
-                    "  cd AIEngine/PythonBridge\n  python fastapi_bridge.py",
-                    "Start Server Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                string msg = $"Failed to start Python server:\n{ex.Message}\n\n" +
+                             "Ensure Python is installed and in PATH, then start manually:\n" +
+                             "  cd AIEngine/PythonBridge\n  python fastapi_bridge.py";
+                AppendConsole(ServerConsoleBox, $"Exception: {ex.Message}");
+                AppendConsole(AppConsoleBox, $"Server start exception: {ex.Message}");
+                MessageBox.Show(msg, "Start Server Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                SetServerOffline();
             }
+        }
+
+        private void SetServerOffline()
+        {
+            ServerStatusDot.Fill = Brushes.Red;
+            ServerStatusText.Text = "Server: Offline";
+            StartServerButton.IsEnabled = true;
+        }
+
+        // ── Console helpers ───────────────────────────────────────────────────
+
+        private static void AppendConsole(TextBox box, string message)
+        {
+            string line = $"[{DateTime.Now:HH:mm:ss}] {message}";
+            box.AppendText(line + Environment.NewLine);
+            box.ScrollToEnd();
+        }
+
+        private void CopyLlmConsole_Click(object sender, RoutedEventArgs e)
+        {
+            if (!string.IsNullOrEmpty(LlmConsoleBox.Text))
+                Clipboard.SetText(LlmConsoleBox.Text);
+        }
+
+        private void CopyAppConsole_Click(object sender, RoutedEventArgs e)
+        {
+            if (!string.IsNullOrEmpty(AppConsoleBox.Text))
+                Clipboard.SetText(AppConsoleBox.Text);
+        }
+
+        private void CopyServerConsole_Click(object sender, RoutedEventArgs e)
+        {
+            if (!string.IsNullOrEmpty(ServerConsoleBox.Text))
+                Clipboard.SetText(ServerConsoleBox.Text);
         }
 
         private void LoadProjectFiles()
@@ -285,6 +328,8 @@ namespace ArbiterHost
 
             string voice = (VoiceSelector.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "British_Female";
 
+            AppendConsole(LlmConsoleBox, $">> {message}");
+
             try
             {
                 var payload = new
@@ -308,6 +353,7 @@ namespace ArbiterHost
                 SuggestionsListBox.Items.Add(arbiterResponse);
 
                 ChatDisplay.ScrollIntoView(ChatDisplay.Items[ChatDisplay.Items.Count - 1]);
+                AppendConsole(LlmConsoleBox, $"<< {arbiterResponse}");
 
                 // Ensure status reflects that server is running
                 ServerStatusDot.Fill = Brushes.LimeGreen;
@@ -321,6 +367,7 @@ namespace ArbiterHost
                 ServerStatusDot.Fill = Brushes.Red;
                 ServerStatusText.Text = "Server: Offline";
                 StartServerButton.IsEnabled = true;
+                AppendConsole(AppConsoleBox, "Chat error: server connection refused.");
                 ChatDisplay.Items.Add(
                     "Error: Python server is not running. Click 'Start Server' or run: " +
                     "cd AIEngine/PythonBridge && python fastapi_bridge.py");
@@ -330,12 +377,14 @@ namespace ArbiterHost
                 ServerStatusDot.Fill = Brushes.Red;
                 ServerStatusText.Text = "Server: Offline";
                 StartServerButton.IsEnabled = true;
+                AppendConsole(AppConsoleBox, "Chat error: request timed out.");
                 ChatDisplay.Items.Add(
                     "Error: Request timed out. The Python server may not be running. " +
                     "Click 'Start Server' or run: cd AIEngine/PythonBridge && python fastapi_bridge.py");
             }
             catch (Exception ex)
             {
+                AppendConsole(AppConsoleBox, $"Chat error: {ex.Message}");
                 ChatDisplay.Items.Add($"Error: {ex.Message}");
             }
         }

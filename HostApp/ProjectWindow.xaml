@@ -85,8 +85,6 @@
                          HorizontalScrollBarVisibility="Auto"
                          FontFamily="Courier New"
                          FontSize="11"
-                         Background="#1E1E1E"
-                         Foreground="#D4D4D4"
                          AcceptsReturn="True"/>
             </TabItem>
         </TabControl>

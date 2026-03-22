@@ -137,6 +137,18 @@ namespace ArbiterHost
 
                 _serverProcess = Process.Start(psi);
 
+                if (_serverProcess == null)
+                {
+                    ServerStatusText.Text = "Server: Offline";
+                    ServerStatusDot.Fill = Brushes.Red;
+                    StartServerButton.IsEnabled = true;
+                    MessageBox.Show(
+                        "Failed to start the Python server process. " +
+                        "Ensure Python is installed and in PATH.",
+                        "Start Server Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                    return;
+                }
+
                 // Wait up to MaxServerStartupSeconds for the server to become available
                 bool serverOnline = false;
                 for (int i = 0; i < MaxServerStartupSeconds; i++)

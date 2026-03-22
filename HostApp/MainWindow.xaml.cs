@@ -60,6 +60,20 @@ namespace ArbiterHost
         {
             AppendConsole(AppConsoleBox, $"Arbiter started. Projects root: {_projectsRoot}");
             await CheckServerStatusAsync();
+            OpenWebChat();
+        }
+
+        private void OpenWebChat()
+        {
+            try
+            {
+                Process.Start(new ProcessStartInfo(PythonApiBase) { UseShellExecute = true });
+                AppendConsole(AppConsoleBox, $"Web chat opened at {PythonApiBase}");
+            }
+            catch (Exception ex)
+            {
+                AppendConsole(AppConsoleBox, $"Could not open web chat: {ex.Message}");
+            }
         }
 
         private void Window_Closing(object sender, System.ComponentModel.CancelEventArgs e)

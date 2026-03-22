@@ -353,6 +353,12 @@ namespace ArbiterHost
             }
         }
 
+        private void Settings_Click(object sender, RoutedEventArgs e)
+        {
+            var win = new SettingsWindow { Owner = this };
+            win.ShowDialog();
+        }
+
         private async void StartServer_Click(object sender, RoutedEventArgs e)
         {
             StartServerButton.IsEnabled = false;

@@ -48,6 +48,15 @@ def create_llm(backend: str, config: "ConfigLoader") -> "BaseLLM":
             base_url=config.get("llm.llamacpp.base_url", "http://localhost:8080"),
             model=config.get("llm.llamacpp.model", ""),
         )
+    if backend == "embedded":
+        from llm.embedded import EmbeddedLLM
+        return EmbeddedLLM(
+            model_path=config.get("llm.embedded.model_path", ""),
+            n_ctx=int(config.get("llm.embedded.n_ctx", 4096)),
+            n_gpu_layers=int(config.get("llm.embedded.n_gpu_layers", -1)),
+            n_threads=int(config.get("llm.embedded.n_threads", 0)),
+            verbose=bool(config.get("llm.embedded.verbose", False)),
+        )
     if backend == "tabby":
         from llm.tabby import TabbyLLM
         return TabbyLLM(

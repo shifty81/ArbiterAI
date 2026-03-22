@@ -48,6 +48,9 @@
                            VerticalAlignment="Center" Margin="0,0,4,0"/>
                 <Button Name="StartServerButton" Content="Start Server" Margin="2"
                         Click="StartServer_Click"/>
+                <Separator Width="10"/>
+                <Button Name="SettingsButton" Content="⚙ Settings" Margin="2"
+                        Click="Settings_Click" ToolTip="Open Arbiter settings"/>
             </WrapPanel>
         </Border>
 

@@ -8,5 +8,7 @@
     "memory_path": "Memory/ConversationLogs",
     "projects_path": "Projects",
     "git_author_name": "ArbiterUser",
-    "git_author_email": "arbiter@local"
+    "git_author_email": "arbiter@local",
+    "arbiterEnginePath": "AIEngine/ArbiterEngine",
+    "arbiterEnginePort": 8001
 }

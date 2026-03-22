@@ -1,6 +1,231 @@
 # ArbiterAI
 
-**Arbiter** is a personal autonomous AI development assistant — a local-first, modular agent that can plan projects, write and edit code, run builds, manage files, and communicate through both chat and voice.
+**Arbiter** is a self-hosted, fully offline AI-powered development platform — a Monaco IDE embedded in a WPF Windows client, backed by a FastAPI Python bridge and an optional full agentic engine with 200+ tools.
+
+---
+
+## Vision
+
+Arbiter is not just a chatbot — it is a controllable, self-iterating AI agent that works alongside you across the full software development lifecycle:
+
+```
+Idea → Planning → Code Generation → Edit in Monaco → Build → Run → Test → AI Review → Fix → Repeat → Working Release
+```
+
+Everything runs locally. No cloud required. Your data never leaves your machine.
+
+---
+
+## Architecture
+
+```
+ArbiterAI/
+├── Arbiter.sln                            # Visual Studio solution
+│
+├── HostApp/                               # C# WPF Windows application
+│   ├── App.xaml(.cs)                      # Startup — shows LauncherWindow
+│   ├── AppConfig.cs                       # Static: mode, API URL, engine process
+│   ├── LauncherWindow.xaml(.cs)           # Mode picker: ArbiterAI | Arbiter Engine
+│   ├── MainWindow.xaml(.cs)              # Project list, chat, build controls
+│   ├── ProjectWindow.xaml(.cs)           # Per-project: chat, file tree, git, TTS
+│   ├── WorkspaceWindow.xaml(.cs)         # Workspace drag-and-drop manager
+│   ├── PdfViewerWindow.xaml(.cs)         # Read-only PDF viewer (WebView2)
+│   ├── BuildInterface/BuildManager.cs    # dotnet / npm / cargo build runner
+│   ├── GitInterface/GitManager.cs        # LibGit2Sharp integration
+│   ├── VoiceInterface/                   # TTS (System.Speech) + STT
+│   ├── Utilities/                        # DarkTitleBar, PythonHelper, InputDialog
+│   ├── Themes/DarkTheme.xaml             # VS Code-inspired dark palette
+│   └── Config/settings.json             # App configuration
+│
+├── AIEngine/
+│   ├── PythonBridge/                      # Primary backend (port 8000)
+│   │   ├── fastapi_bridge.py             # 1 600-line FastAPI server
+│   │   ├── llm_interface.py              # Hardware-aware LLM loading (GGUF + Ollama + stub)
+│   │   ├── persona_manager.py            # Persona system (Arbiter / Coder / Teacher / Organizer)
+│   │   ├── VoiceManager.py               # TTS helper
+│   │   ├── model_downloader.py           # HuggingFace Hub auto-download
+│   │   ├── requirements.txt
+│   │   ├── static/                       # Chat-only web UI (index.html)
+│   │   └── gui/                          # Monaco IDE web UI (index.html + app.js + style.css)
+│   │
+│   └── ArbiterEngine/                     # Full agentic backend (port 8001, optional)
+│       ├── server.py                      # FastAPI server — same API contract as bridge
+│       ├── setup_modules.py              # Sparse-clone 42-module toolset
+│       ├── core/                          # agent, agentic_agent, config_loader, logger,
+│       │                                  # module_loader, permission, plugin_loader,
+│       │                                  # self_build, task_runner, tool_registry
+│       ├── llm/                           # factory + 12 backends
+│       │   # ollama, api, anthropic, gemini, llamacpp, lmstudio,
+│       │   # local, localai, openwebui, tabby, base
+│       ├── configs/config.toml           # Runtime configuration
+│       ├── workspace/                     # Arbiter Engine working directory
+│       │   └── roadmap.json             # Self-build task roadmap
+│       ├── modules/                       # Installed tool modules
+│       └── plugins/                       # Installed plugins
+│
+├── Memory/
+│   ├── ConversationLogs/                  # Per-project SQLite chat history
+│   ├── snippets.json                      # Saved code snippets
+│   ├── notes.json                         # Per-project notes
+│   └── Archive/                           # Archive codex (coming M3)
+│       └── archive.json
+│
+├── Projects/                              # User project workspaces
+│   └── ExampleProject/roadmap.json
+│
+├── roadmap.json                           # Master project roadmap
+└── archive/                               # Archived predecessor code
+    └── webhook-integration/
+```
+
+---
+
+## Modes
+
+| Mode | Port | Description |
+|---|---|---|
+| **ArbiterAI** | 8000 | Lightweight bridge — chat, code actions, build/run/test, Monaco IDE |
+| **Arbiter Engine** | 8001 | Full agentic engine — 200+ tools, 12 LLM backends, self-build loop |
+
+The **Launcher** lets you choose at startup. Both modes serve the same API contract so the WPF client and Monaco IDE work identically with either.
+
+---
+
+## Key Features
+
+| Feature | Status | Milestone |
+|---|---|---|
+| ChatGPT-style web chat UI | ✅ Done | M0 |
+| WPF dark-theme Windows client | ✅ Done | M0 |
+| Voice output (TTS) | ✅ Done | M0 |
+| Voice input (STT — Whisper + Windows Speech) | ✅ Done | M0 |
+| Persona system (Arbiter / Coder / Teacher / Organizer) | ✅ Done | M0 |
+| Project & workspace management | ✅ Done | M0 |
+| Git integration (commit, push, pull, branch, log) | ✅ Done | M0 |
+| Hardware-aware LLM loading (GGUF + Ollama + stub) | ✅ Done | M0 |
+| Build / run / test loop (dotnet, npm, Python, Make) | ✅ Done | M0 |
+| Automated model download (HuggingFace Hub) | ✅ Done | M0 |
+| PDF viewer (WebView2, read-only) | ✅ Done | M1 |
+| Startup launcher (mode picker) | ✅ Done | M1 |
+| Auto-open web chat in browser on launch | ✅ Done | M1 |
+| **Monaco IDE web UI** (Explorer, Editor, Git, AI Chat, Terminal, 40+ panels) | ✅ Done | M1 |
+| File CRUD API (/files, read, write, delete, rename) | ✅ Done | M1 |
+| AI code actions (complete, explain, fix, refactor, docstring, tests) | ✅ Done | M1 |
+| WebSocket streaming (build output, terminal, PTY) | ✅ Done | M1 |
+| Git API (clone, status, stage, commit, log, diff) | ✅ Done | M1 |
+| Arbiter Engine — 12 LLM backends | ✅ Done | M2 |
+| Arbiter Engine — agentic loop (plan → edit → diff) | ✅ Done | M2 |
+| Arbiter Engine — module / plugin system | ✅ Done | M2 |
+| Arbiter Engine — self-build loop | ✅ Done | M2 |
+| **IdeWindow — Monaco embedded in WPF via WebView2** | 🔄 Next | M1 |
+| WPF ↔ IDE native tool-call bridge | 🔄 Next | M1 |
+| Archive & Library codex system | 📋 M3 | M3 |
+| Background file watcher + AI indexing | 📋 M3 | M3 |
+| Multi-agent orchestration | 📋 M5 | M5 |
+| NSIS installer | 📋 M6 | M6 |
+| VS Code extension | 📋 M6 | M6 |
+
+---
+
+## Quick Start
+
+### 1 — Prerequisites
+
+- Windows 10/11
+- [.NET 8 SDK](https://dotnet.microsoft.com/download)
+- Python 3.10+
+- [Microsoft Edge WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) (usually pre-installed on Win 11)
+
+### 2 — Install Python dependencies
+
+```bash
+cd AIEngine/PythonBridge
+pip install -r requirements.txt
+```
+
+### 3 — (Optional) Install Ollama for best AI quality
+
+```
+https://ollama.com  →  ollama pull llama3
+```
+
+### 4 — Run the Python bridge manually (or let the WPF app start it)
+
+```bash
+python AIEngine/PythonBridge/fastapi_bridge.py
+# Bridge starts at http://127.0.0.1:8000
+# Monaco IDE available at http://127.0.0.1:8000/gui/
+```
+
+### 5 — Build and run the WPF app
+
+```bash
+cd HostApp
+dotnet build
+dotnet run
+# OR open Arbiter.sln in Visual Studio and press F5
+```
+
+The Launcher will appear — choose **ArbiterAI** for the standard bridge or **Arbiter Engine** for the full agentic mode.
+
+### 6 — (Optional) Install Arbiter Engine modules
+
+```bash
+python AIEngine/ArbiterEngine/setup_modules.py
+```
+
+---
+
+## Monaco IDE
+
+The built-in Monaco IDE (available at `/gui/`) is a full VS Code-like web editor with:
+
+- **Activity bar** — Explorer, Search, Git, AI Backends, Code Tools, DevOps, Monitoring, Analytics, and 30+ more panels
+- **Monaco Editor** — syntax highlighting, IntelliSense, diff view, multi-tab
+- **AI Chat panel** — chat with Arbiter while viewing your code; context-aware completions
+- **Terminal** — xterm.js PTY terminal streamed via WebSocket
+- **Git panel** — staged/unstaged/untracked, commit, log
+- **Build panel** — real-time streaming output
+- **40+ tool panels** — Scaffold, Brainstorm, Refactor, DocGen, Snippets, Deploy, Docker, DB, Vault, Webhooks, and more
+
+---
+
+## Roadmap
+
+See [`roadmap.json`](roadmap.json) for the full milestone breakdown.
+
+| Milestone | Status |
+|---|---|
+| M0 — Foundation | ✅ Done |
+| M1 — IDE Integration (Monaco + WebView2) | 🔄 In Progress |
+| M2 — Arbiter Engine (full agentic backend) | 🔄 In Progress |
+| M3 — Archive & Library (knowledge codex) | 📋 Planned |
+| M4 — WPF IDE (full native client) | 📋 Planned |
+| M5 — Advanced AI (RAG, multi-agent, self-build) | 📋 Planned |
+| M6 — Distribution (installer, VS Code ext, CLI) | 📋 Planned |
+
+---
+
+## Configuration
+
+Edit `HostApp/Config/settings.json`:
+
+```json
+{
+  "arbiterEnginePath": "AIEngine/ArbiterEngine",
+  "arbiterEnginePort": 8001,
+  "library_paths": []
+}
+```
+
+Edit `AIEngine/ArbiterEngine/configs/config.toml` for LLM backend selection, tool permissions, and agent behaviour.
+
+---
+
+## Contributing
+
+This is an active solo project. Issues and PRs are welcome — please check the roadmap first to avoid duplicating in-progress work.
+
 
 ---
 

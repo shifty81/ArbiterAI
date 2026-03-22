@@ -1,11 +1,13 @@
 """
 Arbiter AI — FastAPI Python Bridge
-Handles chat requests, LLM inference, TTS voice output, and model management.
+Handles chat requests, LLM inference, TTS voice output, model management, and STT.
 """
 
 import re
+import tempfile
+import os
 from pathlib import Path
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from pydantic import BaseModel
 import sqlite3
 from llm_interface import generate_response
@@ -185,6 +187,54 @@ def download_model_endpoint(req: DownloadRequest):
 def download_status_endpoint():
     """Return the current model download progress and status."""
     return get_download_status()
+
+
+_whisper_model = None
+
+
+def _get_whisper_model():
+    """Load and cache the Whisper base model."""
+    global _whisper_model
+    if _whisper_model is None:
+        import whisper  # type: ignore
+        _whisper_model = whisper.load_model("base")
+    return _whisper_model
+
+
+@app.post("/stt")
+async def speech_to_text(file: UploadFile = File(...)):
+    """
+    Transcribe uploaded audio to text using OpenAI Whisper.
+
+    Accepts any audio format supported by Whisper (wav, mp3, m4a, ogg, etc.).
+    Returns ``{"text": "<transcription>"}`` on success.
+    Requires ``openai-whisper`` to be installed (see requirements.txt).
+    """
+    try:
+        import whisper  # type: ignore  # noqa: F401
+    except ImportError:
+        raise HTTPException(
+            status_code=501,
+            detail=(
+                "openai-whisper is not installed. "
+                "Install it with: pip install openai-whisper"
+            ),
+        )
+
+    suffix = Path(file.filename or "audio.wav").suffix or ".wav"
+    audio_bytes = await file.read()
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+        tmp.write(audio_bytes)
+        tmp_path = tmp.name
+
+    try:
+        model = _get_whisper_model()
+        result = model.transcribe(tmp_path)
+        text: str = result.get("text", "").strip()
+    finally:
+        os.unlink(tmp_path)
+
+    return {"text": text}
 
 
 if __name__ == "__main__":

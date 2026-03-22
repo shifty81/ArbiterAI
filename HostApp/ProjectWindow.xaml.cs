@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
@@ -27,6 +29,7 @@ namespace ArbiterHost
             CurrentProjectPath = Path.Combine(projectsRoot, projectName);
             Title = $"Arbiter — {projectName}";
             LoadProjectFiles();
+            LoadPhaseSelector();
         }
 
         private void LoadProjectFiles()
@@ -50,6 +53,33 @@ namespace ArbiterHost
             foreach (var file in Directory.GetFiles(path))
             {
                 parent.Items.Add(new TreeViewItem { Header = Path.GetFileName(file) });
+            }
+        }
+
+        private void LoadPhaseSelector()
+        {
+            string roadmapPath = Path.Combine(CurrentProjectPath, "roadmap.json");
+            if (!File.Exists(roadmapPath)) return;
+            try
+            {
+                using var doc = JsonDocument.Parse(File.ReadAllText(roadmapPath));
+                if (!doc.RootElement.TryGetProperty("phases", out var phases)) return;
+                PhaseSelector.Items.Clear();
+                foreach (var phase in phases.EnumerateArray())
+                {
+                    string name = phase.TryGetProperty("name", out var nameProp)
+                        ? nameProp.GetString() ?? string.Empty
+                        : phase.TryGetProperty("id", out var idProp)
+                            ? $"Phase {idProp.GetInt32()}"
+                            : "Phase";
+                    PhaseSelector.Items.Add(new ComboBoxItem { Content = name });
+                }
+                if (PhaseSelector.Items.Count > 0)
+                    PhaseSelector.SelectedIndex = 0;
+            }
+            catch
+            {
+                // Silently ignore malformed roadmap
             }
         }
 
@@ -93,10 +123,34 @@ namespace ArbiterHost
             }
         }
 
-        private void MicButton_Click(object sender, RoutedEventArgs e)
+        private const int SpeechRecognitionTimeoutSeconds = 10;
+
+        private async void MicButton_Click(object sender, RoutedEventArgs e)
         {
-            MessageBox.Show("Voice input (STT) stub — integrate Whisper or Coqui STT here.",
-                "Mic Input", MessageBoxButton.OK, MessageBoxImage.Information);
+            var btn = (Button)sender;
+            btn.IsEnabled = false;
+            btn.Content = "…";
+            try
+            {
+                using var recognizer = new System.Speech.Recognition.SpeechRecognitionEngine(
+                    new System.Globalization.CultureInfo("en-US"));
+                recognizer.LoadGrammar(new System.Speech.Recognition.DictationGrammar());
+                recognizer.SetInputToDefaultAudioDevice();
+                var result = await System.Threading.Tasks.Task.Run(() =>
+                    recognizer.Recognize(TimeSpan.FromSeconds(SpeechRecognitionTimeoutSeconds)));
+                if (result != null)
+                    ChatInput.Text = result.Text;
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Voice input error: {ex.Message}", "Mic Input",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+            finally
+            {
+                btn.IsEnabled = true;
+                btn.Content = "Mic";
+            }
         }
 
         private void ApproveSuggestion_Click(object sender, RoutedEventArgs e)
@@ -111,8 +165,45 @@ namespace ArbiterHost
 
         private void MoveSuggestion_Click(object sender, RoutedEventArgs e)
         {
-            MessageBox.Show("Move suggestion to another project — stub for future implementation.",
-                "Move", MessageBoxButton.OK, MessageBoxImage.Information);
+            if (SuggestionsListBox.SelectedItem == null) return;
+            string code = SuggestionsListBox.SelectedItem.ToString() ?? string.Empty;
+
+            string projectsRoot = Path.GetDirectoryName(CurrentProjectPath) ?? string.Empty;
+            var otherProjects = Directory.Exists(projectsRoot)
+                ? Directory.GetDirectories(projectsRoot)
+                    .Select(d => Path.GetFileName(d))
+                    .Where(p => !string.IsNullOrEmpty(p) && p != ProjectName)
+                    .Select(p => p!)
+                    .ToList()
+                : new List<string>();
+
+            if (otherProjects.Count == 0)
+            {
+                MessageBox.Show("No other projects available to move to.", "Move",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            string? targetProject = InputDialog.Show(
+                $"Enter target project name ({string.Join(", ", otherProjects)}):",
+                "Move Suggestion",
+                otherProjects[0]);
+
+            if (string.IsNullOrWhiteSpace(targetProject)) return;
+
+            string targetDir = Path.Combine(projectsRoot, targetProject);
+            if (!Directory.Exists(targetDir))
+            {
+                MessageBox.Show($"Project '{targetProject}' does not exist.", "Move",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            string targetPath = Path.Combine(targetDir, "GeneratedCode.cs");
+            File.WriteAllText(targetPath, code);
+            SuggestionsListBox.Items.Remove(SuggestionsListBox.SelectedItem);
+            MessageBox.Show($"Suggestion moved to {targetPath}", "Moved",
+                MessageBoxButton.OK, MessageBoxImage.Information);
         }
 
         private void ProjectFilesTree_Drop(object sender, DragEventArgs e)
@@ -169,20 +260,61 @@ namespace ArbiterHost
 
         private void Push_Click(object sender, RoutedEventArgs e)
         {
-            MessageBox.Show("Push stub — configure remote origin to enable.", "Git Push",
-                MessageBoxButton.OK, MessageBoxImage.Information);
+            string? remoteUrl = InputDialog.Show(
+                "Enter remote URL (e.g. https://github.com/user/repo.git):\n" +
+                "Tip: embed a Personal Access Token in the URL for authentication:\n" +
+                "  https://<token>@github.com/user/repo.git",
+                "Git Push", string.Empty);
+            if (string.IsNullOrWhiteSpace(remoteUrl)) return;
+            try
+            {
+                gitManager.InitRepo(CurrentProjectPath);
+                gitManager.SetRemote(remoteUrl);
+                gitManager.Push();
+                MessageBox.Show("Pushed successfully.", "Git Push",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Push failed: {ex.Message}", "Git Error",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+            }
         }
 
         private void Pull_Click(object sender, RoutedEventArgs e)
         {
-            MessageBox.Show("Pull stub — configure remote origin to enable.", "Git Pull",
-                MessageBoxButton.OK, MessageBoxImage.Information);
+            try
+            {
+                gitManager.InitRepo(CurrentProjectPath);
+                gitManager.Pull();
+                LoadProjectFiles();
+                MessageBox.Show("Pulled successfully.", "Git Pull",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Pull failed: {ex.Message}", "Git Error",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+            }
         }
 
         private void Log_Click(object sender, RoutedEventArgs e)
         {
-            MessageBox.Show("Git log stub — shows commit history.", "Git Log",
-                MessageBoxButton.OK, MessageBoxImage.Information);
+            try
+            {
+                gitManager.InitRepo(CurrentProjectPath);
+                var entries = gitManager.GetLog(20).ToList();
+                string logText = entries.Count > 0
+                    ? string.Join("\n", entries.Select(c =>
+                        $"{c.Sha}  {c.When:yyyy-MM-dd HH:mm}  {c.Author}: {c.Message}"))
+                    : "No commits yet.";
+                MessageBox.Show(logText, "Git Log", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Log failed: {ex.Message}", "Git Error",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+            }
         }
     }
 }

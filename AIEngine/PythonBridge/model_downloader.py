@@ -4,6 +4,7 @@ Detects available hardware, recommends the best GGUF model, and downloads it
 from HuggingFace Hub to the standard model folder.
 """
 
+import subprocess
 import sys
 import threading
 from pathlib import Path
@@ -34,13 +35,42 @@ _download_status: dict = {
 
 
 def detect_vram_gb() -> float:
-    """Return the total VRAM (GB) of the first CUDA device, or 0.0 if unavailable."""
+    """Return the total VRAM (GB) of the first CUDA device, or 0.0 if unavailable.
+
+    Detection order:
+    1. PyTorch CUDA (most accurate when a CUDA-enabled build is installed).
+    2. ``nvidia-smi`` subprocess (works even with a CPU-only PyTorch build as
+       long as NVIDIA drivers are present).
+    """
+    # ── 1. Try PyTorch first ──────────────────────────────────────────────
     try:
         import torch  # type: ignore
         if torch.cuda.is_available():
             return torch.cuda.get_device_properties(0).total_memory / (1024 ** 3)
     except ImportError:
         pass
+
+    # ── 2. Fallback: query nvidia-smi directly ────────────────────────────
+    # This succeeds even when PyTorch was installed without CUDA support.
+    try:
+        result = subprocess.run(
+            [
+                "nvidia-smi",
+                "--query-gpu=memory.total",
+                "--format=csv,noheader,nounits",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode == 0:
+            # nvidia-smi reports memory in MiB; take the first GPU
+            first_line = result.stdout.strip().splitlines()[0]
+            vram_mib = float(first_line.strip())
+            return vram_mib / 1024.0
+    except (FileNotFoundError, IndexError, ValueError, subprocess.TimeoutExpired):
+        pass
+
     return 0.0
 
 

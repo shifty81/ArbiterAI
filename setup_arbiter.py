@@ -61,6 +61,22 @@ def main() -> None:
 
     vram = detect_vram_gb()
     print(f"  GPU VRAM   : {vram:.1f} GB")
+
+    # Warn if nvidia-smi found a GPU but PyTorch didn't (CPU-only build)
+    if vram > 0.0:
+        try:
+            import torch  # noqa: F401
+            if not torch.cuda.is_available():
+                print(
+                    "\n  ⚠ Warning: GPU detected via nvidia-smi but PyTorch reports no CUDA.\n"
+                    "    You appear to have a CPU-only PyTorch build installed.\n"
+                    "    For GPU-accelerated inference, reinstall PyTorch with CUDA support:\n"
+                    "      pip install torch --index-url https://download.pytorch.org/whl/cu121\n"
+                    "    (replace cu121 with the CUDA version shown by: nvidia-smi)\n"
+                )
+        except ImportError:
+            pass
+
     model_info = recommend_model(vram)
     print(f"  Recommended: {model_info['label']}  ({model_info['filename']})")
 

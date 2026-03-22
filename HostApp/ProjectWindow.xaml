@@ -113,7 +113,9 @@
         <!-- Bottom: Tabs for Project Files, Build Output, and Console -->
         <TabControl Name="BottomTabControl" Grid.Row="3" Margin="5">
             <TabItem Header="Project Files">
-                <TreeView Name="ProjectFilesTree" AllowDrop="True" Drop="ProjectFilesTree_Drop"/>
+                <TreeView Name="ProjectFilesTree" AllowDrop="True"
+                          Drop="ProjectFilesTree_Drop"
+                          MouseDoubleClick="ProjectFilesTree_MouseDoubleClick"/>
             </TabItem>
             <TabItem Header="Build Output">
                 <TextBox Name="BuildOutputBox"

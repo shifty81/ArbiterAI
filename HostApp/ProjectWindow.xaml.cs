@@ -284,13 +284,13 @@ namespace ArbiterHost
         {
             foreach (var dir in Directory.GetDirectories(path))
             {
-                var item = new TreeViewItem { Header = Path.GetFileName(dir) };
+                var item = new TreeViewItem { Header = Path.GetFileName(dir), Tag = dir };
                 PopulateTreeView(item, dir);
                 parent.Items.Add(item);
             }
             foreach (var file in Directory.GetFiles(path))
             {
-                parent.Items.Add(new TreeViewItem { Header = Path.GetFileName(file) });
+                parent.Items.Add(new TreeViewItem { Header = Path.GetFileName(file), Tag = file });
             }
         }
 
@@ -582,6 +582,20 @@ namespace ArbiterHost
                 File.Copy(file, dest, true);
             }
             LoadProjectFiles();
+        }
+
+        private void ProjectFilesTree_MouseDoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        {
+            if (ProjectFilesTree.SelectedItem is not TreeViewItem item) return;
+            if (item.Tag is not string filePath) return;
+            if (!File.Exists(filePath)) return;
+
+            if (filePath.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
+            {
+                var viewer = new PdfViewerWindow(filePath) { Owner = this };
+                viewer.Show();
+                e.Handled = true;
+            }
         }
 
         private void Commit_Click(object sender, RoutedEventArgs e)

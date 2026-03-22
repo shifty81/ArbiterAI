@@ -3,6 +3,7 @@ uvicorn>=0.30.0
 pydantic>=2.0.0
 pyttsx3>=2.90
 simpleaudio>=1.0.4
+huggingface-hub>=0.20.0
 # Optional — uncomment for higher quality TTS:
 # TTS>=0.22.0
 # Optional — uncomment for local LLM inference:

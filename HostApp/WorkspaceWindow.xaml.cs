@@ -12,6 +12,12 @@ namespace ArbiterHost
 {
     public partial class WorkspaceWindow : Window
     {
+        protected override void OnSourceInitialized(EventArgs e)
+        {
+            base.OnSourceInitialized(e);
+            DarkTitleBar.Apply(this);
+        }
+
         private readonly string projectsRoot = Path.Combine(
             Directory.GetCurrentDirectory(), "Projects");
 

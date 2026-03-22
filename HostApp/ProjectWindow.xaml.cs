@@ -24,7 +24,7 @@ namespace ArbiterHost
 
         private static readonly HttpClient httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
         private const string PythonApiBase = "http://127.0.0.1:8000";
-        private const int MaxServerStartupSeconds = 10;
+        private const int MaxServerStartupSeconds = 30;
 
         private readonly GitManager gitManager = new GitManager();
         private readonly BuildManager buildManager;
@@ -39,6 +39,12 @@ namespace ArbiterHost
             buildManager = new BuildManager(CurrentProjectPath);
             LoadProjectFiles();
             LoadPhaseSelector();
+        }
+
+        protected override void OnSourceInitialized(EventArgs e)
+        {
+            base.OnSourceInitialized(e);
+            DarkTitleBar.Apply(this);
         }
 
         private async void Window_Loaded(object sender, RoutedEventArgs e)
@@ -133,6 +139,8 @@ namespace ArbiterHost
                     WorkingDirectory = bridgeDir,
                     UseShellExecute = false,
                     CreateNoWindow = true,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
                 };
 
                 _serverProcess = Process.Start(psi);
@@ -154,6 +162,30 @@ namespace ArbiterHost
                 for (int i = 0; i < MaxServerStartupSeconds; i++)
                 {
                     await Task.Delay(1000);
+
+                    if (_serverProcess.HasExited)
+                    {
+                        string stderr = await _serverProcess.StandardError.ReadToEndAsync();
+                        string stdout = await _serverProcess.StandardOutput.ReadToEndAsync();
+                        string details = !string.IsNullOrWhiteSpace(stderr) ? stderr
+                                       : !string.IsNullOrWhiteSpace(stdout) ? stdout
+                                       : "(no output captured)";
+                        if (details.Length > 800) details = details[..800] + "…";
+                        ServerStatusDot.Fill = Brushes.Red;
+                        ServerStatusText.Text = "Server: Offline";
+                        StartServerButton.IsEnabled = true;
+                        MessageBox.Show(
+                            $"The Python server process exited unexpectedly " +
+                            $"(exit code {_serverProcess.ExitCode}).\n\n" +
+                            $"Output:\n{details}\n\n" +
+                            "Make sure all dependencies are installed:\n" +
+                            "  pip install -r AIEngine/PythonBridge/requirements.txt",
+                            "Server Exited", MessageBoxButton.OK, MessageBoxImage.Error);
+                        return;
+                    }
+
+                    ServerStatusText.Text = $"Server: starting… ({i + 1}/{MaxServerStartupSeconds}s)";
+
                     try
                     {
                         var resp = await httpClient.GetAsync(PythonApiBase + "/health");
@@ -173,7 +205,8 @@ namespace ArbiterHost
                     ServerStatusText.Text = "Server: Offline";
                     StartServerButton.IsEnabled = true;
                     MessageBox.Show(
-                        "The server process was started but is not responding yet.\n" +
+                        $"The server process is running but has not responded after " +
+                        $"{MaxServerStartupSeconds} seconds.\n" +
                         "It may still be loading. Click 'Start Server' to retry.",
                         "Server Timeout", MessageBoxButton.OK, MessageBoxImage.Warning);
                 }

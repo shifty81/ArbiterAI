@@ -7,6 +7,7 @@ using System.Text;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
+using ArbiterHost.BuildInterface;
 using ArbiterHost.GitInterface;
 using ArbiterHost.Utilities;
 
@@ -21,6 +22,7 @@ namespace ArbiterHost
         private const string PythonApiBase = "http://127.0.0.1:8000";
 
         private readonly GitManager gitManager = new GitManager();
+        private readonly BuildManager buildManager;
 
         public ProjectWindow(string projectName, string projectsRoot)
         {
@@ -28,6 +30,7 @@ namespace ArbiterHost
             ProjectName = projectName;
             CurrentProjectPath = Path.Combine(projectsRoot, projectName);
             Title = $"Arbiter — {projectName}";
+            buildManager = new BuildManager(CurrentProjectPath);
             LoadProjectFiles();
             LoadPhaseSelector();
         }
@@ -314,6 +317,60 @@ namespace ArbiterHost
             {
                 MessageBox.Show($"Log failed: {ex.Message}", "Git Error",
                     MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private async void Build_Click(object sender, RoutedEventArgs e) =>
+            await ExecuteBuildActionAsync((Button)sender, BuildManager.BuildAction.Build, "Build");
+
+        private async void Run_Click(object sender, RoutedEventArgs e) =>
+            await ExecuteBuildActionAsync((Button)sender, BuildManager.BuildAction.Run, "Run");
+
+        private async void Test_Click(object sender, RoutedEventArgs e) =>
+            await ExecuteBuildActionAsync((Button)sender, BuildManager.BuildAction.Test, "Test");
+
+        private const int BuildOutputTabIndex = 1;
+
+        private async System.Threading.Tasks.Task ExecuteBuildActionAsync(
+            Button btn, BuildManager.BuildAction action, string label)
+        {
+            string command = buildManager.AutoDetectCommand(action);
+            if (string.IsNullOrEmpty(command))
+            {
+                command = InputDialog.Show(
+                    $"No {label} command detected. Enter command to run in the project folder:",
+                    $"Custom {label}", string.Empty) ?? string.Empty;
+                if (string.IsNullOrWhiteSpace(command)) return;
+            }
+
+            btn.IsEnabled = false;
+            btn.Content = "…";
+            BottomTabControl.SelectedIndex = BuildOutputTabIndex;
+            BuildOutputBox.Text = $"▶ {label}: {command}\n\n";
+
+            try
+            {
+                var result = await buildManager.RunAsync(command);
+                BuildOutputBox.AppendText(result.Output);
+                BuildOutputBox.AppendText(result.Success
+                    ? $"\n✅ {label} succeeded (exit 0)"
+                    : $"\n❌ {label} failed (exit {result.ExitCode})");
+
+                if (!result.Success)
+                {
+                    ChatDisplay.Items.Add(
+                        $"[Build] {label} failed. Review the Build Output tab for details.");
+                }
+            }
+            catch (Exception ex)
+            {
+                BuildOutputBox.AppendText($"\n[Error] {ex.Message}");
+            }
+            finally
+            {
+                BuildOutputBox.ScrollToEnd();
+                btn.IsEnabled = true;
+                btn.Content = label;
             }
         }
     }

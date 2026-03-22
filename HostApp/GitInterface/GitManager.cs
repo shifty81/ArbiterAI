@@ -109,12 +109,14 @@ namespace ArbiterHost.GitInterface
             Commands.Pull(repo, merger, options);
         }
 
+        private const int ShortShaLength = 7;
+
         public IEnumerable<(string Sha, string Message, string Author, DateTimeOffset When)> GetLog(int limit = 20)
         {
             if (repo == null) throw new InvalidOperationException("Repository not initialized.");
             return repo.Commits
                 .Take(limit)
-                .Select(c => (c.Sha.Substring(0, Math.Min(7, c.Sha.Length)), c.MessageShort.Trim(), c.Author.Name, c.Author.When));
+                .Select(c => (c.Sha.Substring(0, Math.Min(ShortShaLength, c.Sha.Length)), c.MessageShort.Trim(), c.Author.Name, c.Author.When));
         }
     }
 }

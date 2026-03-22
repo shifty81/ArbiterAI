@@ -1,0 +1,26 @@
+<Window x:Class="ArbiterHost.WorkspaceWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Arbiter Workspace" Height="600" Width="1000"
+        WindowStartupLocation="CenterScreen">
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="250"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- Project List Panel -->
+        <StackPanel Grid.Column="0" Margin="5">
+            <TextBlock Text="Projects" FontWeight="Bold" FontSize="16" Margin="0,0,0,5"/>
+            <ListBox Name="ProjectListBox" Height="400" AllowDrop="True" Drop="ProjectListBox_Drop"/>
+            <Button Content="Create Project" Margin="0,5,0,2" Click="CreateProject_Click"/>
+            <Button Content="Open Project" Margin="0,2,0,0" Click="OpenProject_Click"/>
+        </StackPanel>
+
+        <!-- Project Summary Panel -->
+        <StackPanel Grid.Column="1" Margin="5">
+            <TextBlock Text="Project Overview" FontWeight="Bold" FontSize="16" Margin="0,0,0,5"/>
+            <TextBox Name="ProjectSummaryBox" IsReadOnly="True" TextWrapping="Wrap" Height="400"/>
+        </StackPanel>
+    </Grid>
+</Window>

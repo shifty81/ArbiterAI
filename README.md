@@ -1,168 +1,185 @@
 # ArbiterAI
 
-ArbiterAI bridges your project management tools — **Jira**, **Azure Boards**, and **Linear** — with the [GitHub Copilot coding agent](https://docs.github.com/en/copilot/how-tos/use-copilot-agents/coding-agent). When a ticket is labeled for Copilot in your PM tool, ArbiterAI automatically creates a GitHub issue and assigns it to `copilot-swe-agent`, triggering autonomous implementation.
+**Arbiter** is a personal autonomous AI development assistant — a local-first, modular agent that can plan projects, write and edit code, run builds, manage files, and communicate through both chat and voice.
 
 ---
 
-## How It Works
+## Vision
+
+Arbiter is not just a chatbot — it is a controllable, self-iterating AI agent that works alongside you across the full software development lifecycle:
 
 ```
-PM Tool (Jira / Azure Boards / Linear)
-           │
-           │  Webhook (on create/update with trigger label)
-           ▼
-      ArbiterAI Server
-           │
-           │  GitHub REST API
-           ▼
-   Create Issue in target repo
-   Assign → copilot-swe-agent
-           │
-           ▼
-   Copilot coding agent starts working 🤖
+Idea → Planning → Code Generation → Build → Run → Test → Report → Fix → Repeat → Working EXE
 ```
 
-1. You add a trigger label (default: `copilot`) to a ticket in your PM tool.
-2. Your PM tool fires a webhook to ArbiterAI.
-3. ArbiterAI creates a corresponding GitHub issue in the configured repository.
-4. The issue is assigned to `copilot-swe-agent`, which triggers the Copilot coding agent to start working autonomously.
-5. Copilot opens a draft pull request once work is done for you to review.
+---
+
+## Architecture
+
+```
+ArbiterAI/
+├── Arbiter.sln                        # Visual Studio solution
+│
+├── HostApp/                           # C# WPF Windows application
+│   ├── MainWindow.xaml(.cs)           # Launch screen
+│   ├── WorkspaceWindow.xaml(.cs)      # Project list + drag-and-drop
+│   ├── ProjectWindow.xaml(.cs)        # Chat, suggestions, file tree, Git, TTS
+│   ├── VoiceInterface/
+│   │   ├── VoiceManager.cs            # C# TTS bridge
+│   │   └── VoiceManager.py            # Python TTS helper
+│   ├── GitInterface/
+│   │   └── GitManager.cs              # LibGit2Sharp integration
+│   └── Config/
+│       └── settings.json              # App configuration
+│
+├── AIEngine/
+│   ├── LLaMA2-13B/                    # Local LLM model folder (GGUF files go here)
+│   └── PythonBridge/
+│       ├── fastapi_bridge.py          # FastAPI server — chat, TTS, history
+│       ├── llm_interface.py           # Hardware-aware LLM loading + inference
+│       ├── VoiceManager.py            # TTS (pyttsx3 / Coqui TTS)
+│       └── requirements.txt           # Python dependencies
+│
+├── Memory/
+│   └── ConversationLogs/              # Per-project SQLite chat logs
+│
+├── Projects/                          # User project workspaces
+│   └── ExampleProject/
+│       └── roadmap.json               # Phase and task tracking
+│
+├── Temp/                              # Temporary build/run files
+│
+└── archive/
+    └── webhook-integration/           # Previous Jira/Azure Boards/Linear bridge (archived)
+```
+
+---
+
+## Key Features
+
+| Feature | Status |
+|---|---|
+| Chat UI (ChatGPT-style) | ✅ Phase 0 |
+| Voice output (TTS) | ✅ Phase 0 |
+| Voice input (STT) | 🔧 Stub — integrate Whisper |
+| Project & workspace management | ✅ Phase 0 |
+| Drag-and-drop file workflow | ✅ Phase 0 |
+| Git integration (commit, branch) | ✅ Phase 0 |
+| Hardware-aware LLM loading | ✅ Phase 0 |
+| Code generation & approval | ✅ Phase 0 |
+| Roadmap / task planning | ✅ Phase 0 |
+| Local LLM inference (GGUF) | 🔧 Configure model path |
+| Build + run + test loop | 📋 Phase 1 |
+| Google Drive workspace | 📋 Phase 2 |
+| Visual Studio VSIX extension | 📋 Phase 3 |
+| Knowledge archive (PDF, docs) | 📋 Phase 3 |
+| Image & audio generation | 📋 Phase 4 |
+| Multi-agent system | 📋 Phase 5 |
 
 ---
 
 ## Prerequisites
 
-- Node.js 20+
-- A GitHub repository with [Copilot coding agent enabled](https://docs.github.com/en/copilot/how-tos/use-copilot-agents/coding-agent)
-- A GitHub Personal Access Token (PAT) with `repo` and `issues` scopes
-- Webhook URLs configured in your PM tool(s)
+- **Windows 10/11**
+- **.NET 8 SDK** — for building the WPF host app
+- **Visual Studio 2022** (Community or higher) with WPF workload
+- **Python 3.11+** — for the AI engine bridge
+- *(Optional)* A GGUF language model — for real LLM inference
 
 ---
 
-## Installation
+## Quick Start
+
+### 1. Clone the repo
 
 ```bash
 git clone https://github.com/shifty81/ArbiterAI.git
 cd ArbiterAI
-npm install
-cp .env.example .env
 ```
 
-Edit `.env` with your credentials (see [Configuration](#configuration)).
+### 2. Set up the Python bridge
+
+```bash
+cd AIEngine/PythonBridge
+pip install -r requirements.txt
+python fastapi_bridge.py
+```
+
+The bridge will start at `http://127.0.0.1:8000`.
+
+### 3. (Optional) Configure a local LLM
+
+Download a GGUF model and set the environment variable:
+
+```
+ARBITER_MODEL_PATH=C:\path\to\your-model.gguf
+```
+
+See `AIEngine/LLaMA2-13B/README.md` for model recommendations.
+
+### 4. Build and run the Windows app
+
+Open `Arbiter.sln` in Visual Studio 2022, restore NuGet packages, and press **F5**.
 
 ---
 
-## Configuration
+## Python Bridge API
 
-All configuration is done via environment variables. Copy `.env.example` to `.env` and fill in the values:
-
-| Variable | Required | Description |
+| Endpoint | Method | Description |
 |---|---|---|
-| `GITHUB_TOKEN` | ✅ | GitHub PAT with `repo` + `issues` scopes |
-| `GITHUB_OWNER` | ✅ | Repo owner (user or org) where issues will be created |
-| `GITHUB_REPO` | ✅ | Repo name where issues will be created |
-| `PORT` | — | HTTP port (default: `3000`) |
-| `JIRA_WEBHOOK_SECRET` | — | Secret for verifying Jira webhook signatures |
-| `JIRA_TRIGGER_LABEL` | — | Jira label that triggers delegation (default: `copilot`) |
-| `AZURE_BOARDS_WEBHOOK_SECRET` | — | Secret for verifying Azure Boards webhook signatures |
-| `AZURE_BOARDS_TRIGGER_TAG` | — | Azure Boards tag that triggers delegation (default: `copilot`) |
-| `LINEAR_WEBHOOK_SECRET` | — | Secret for verifying Linear webhook signatures |
-| `LINEAR_TRIGGER_LABEL` | — | Linear label that triggers delegation (default: `copilot`) |
+| `/health` | GET | Health check |
+| `/status` | GET | GPU, VRAM, model, token limit info |
+| `/chat` | POST | Send a message, get Arbiter's response + TTS |
+| `/history/{project}` | GET | Retrieve conversation history for a project |
 
----
+### Chat request example
 
-## Running the Server
-
-```bash
-# Development (uses ts-node)
-npm run dev
-
-# Production
-npm run build
-npm start
-```
-
-The server exposes:
-- `GET  /health` — Health check
-- `POST /webhooks/jira` — Jira webhook endpoint
-- `POST /webhooks/azure-boards` — Azure Boards webhook endpoint
-- `POST /webhooks/linear` — Linear webhook endpoint
-
----
-
-## PM Tool Setup
-
-### Jira
-
-1. In your Jira project, go to **Project Settings → Webhooks → Create webhook**.
-2. Set the URL to `https://<your-server>/webhooks/jira`.
-3. Select events: **Issue created**, **Issue updated**.
-4. Optionally set a secret and put it in `JIRA_WEBHOOK_SECRET`.
-5. Add the label `copilot` (or your custom `JIRA_TRIGGER_LABEL`) to any Jira issue you want delegated to Copilot.
-
-### Azure Boards
-
-1. In Azure DevOps, go to **Project Settings → Service hooks → Create subscription**.
-2. Choose **Web Hooks** and select **Work item created** / **Work item updated**.
-3. Set the URL to `https://<your-server>/webhooks/azure-boards`.
-4. Add the tag `copilot` (or your custom `AZURE_BOARDS_TRIGGER_TAG`) to any work item you want delegated.
-
-### Linear
-
-1. In Linear, go to **Settings → API → Webhooks → New webhook**.
-2. Set the URL to `https://<your-server>/webhooks/linear`.
-3. Select **Issues** events.
-4. Copy the webhook signing secret into `LINEAR_WEBHOOK_SECRET`.
-5. Add the label `copilot` (or your custom `LINEAR_TRIGGER_LABEL`) to any Linear issue you want delegated.
-
----
-
-## Development
-
-```bash
-# Run tests
-npm test
-
-# Run tests with coverage
-npm run test:coverage
-
-# Lint
-npm run lint
-
-# Build
-npm run build
+```json
+POST /chat
+{
+  "message": "Add a docking system to my ship class",
+  "project": "SpaceGame",
+  "use_voice": true,
+  "voice": "British_Female"
+}
 ```
 
 ---
 
-## Project Structure
+## Open-Source Technology Stack
+
+| Layer | Technology |
+|---|---|
+| Windows UI | C# WPF / .NET 8 |
+| AI Bridge | Python FastAPI |
+| LLM Inference | llama-cpp-python (GGUF) |
+| TTS | pyttsx3 / Coqui TTS |
+| STT | Whisper (planned) |
+| Git | LibGit2Sharp |
+| Vector Search | Chroma / FAISS (planned) |
+| Agent Framework | LangChain / AutoGen (planned) |
+
+---
+
+## Roadmap
 
 ```
-src/
-├── index.ts                        # Entry point
-├── config.ts                       # Configuration loading
-├── server.ts                       # Express server and routing
-├── github/
-│   └── client.ts                   # GitHub API client (creates + assigns issues)
-├── integrations/
-│   ├── types.ts                    # Shared WorkItem type
-│   ├── jira/
-│   │   ├── handler.ts              # Jira webhook handler
-│   │   └── types.ts                # Jira webhook payload types
-│   ├── azure-boards/
-│   │   ├── handler.ts              # Azure Boards webhook handler
-│   │   └── types.ts                # Azure Boards payload types
-│   └── linear/
-│       ├── handler.ts              # Linear webhook handler
-│       └── types.ts                # Linear payload types
-└── utils/
-    ├── logger.ts                   # Structured logger
-    └── webhook-security.ts         # HMAC signature verification
+Phase 0  — Chat + Voice + Workspace + Git                  ← Current
+Phase 1  — Build loop + error fix + test runner
+Phase 2  — Google Drive workspace + cloud sync
+Phase 3  — Knowledge archive + PDF + VS VSIX
+Phase 4  — Image / audio generation + multimodal
+Phase 5  — Multi-agent + persona system
 ```
+
+---
+
+## Archive
+
+The previous webhook integration (Jira → Azure Boards → Linear → GitHub Copilot) has been archived to `archive/webhook-integration/` and is no longer the active development focus.
 
 ---
 
 ## License
 
 MIT
-

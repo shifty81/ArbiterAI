@@ -1,0 +1,12 @@
+{
+    "project": "ExampleProject",
+    "phases": [
+        { "id": 1, "name": "Phase 0 — Chat & Planning", "status": "active" },
+        { "id": 2, "name": "Phase 1 — Code Generation", "status": "pending" },
+        { "id": 3, "name": "Phase 2 — Build & Test Loop", "status": "pending" }
+    ],
+    "tasks": [
+        { "id": 1, "phase": 1, "title": "Set up project structure", "status": "done" },
+        { "id": 2, "phase": 1, "title": "Configure Python bridge", "status": "in-progress" }
+    ]
+}

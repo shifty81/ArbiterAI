@@ -1,0 +1,13 @@
+<Window x:Class="ArbiterHost.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Arbiter" Height="450" Width="800"
+        WindowStartupLocation="CenterScreen">
+    <Grid>
+        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+            <TextBlock Text="Arbiter AI" FontSize="32" FontWeight="Bold" HorizontalAlignment="Center" Margin="0,0,0,20"/>
+            <TextBlock Text="Personal Autonomous Development Assistant" FontSize="14" HorizontalAlignment="Center" Margin="0,0,0,40"/>
+            <Button Content="Open Workspace" Click="OpenWorkspace_Click" Width="200" Height="50" FontSize="14"/>
+        </StackPanel>
+    </Grid>
+</Window>

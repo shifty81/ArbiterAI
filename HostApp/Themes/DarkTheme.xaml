@@ -432,7 +432,7 @@
 
     <!-- ===== GridSplitter ===== -->
     <Style TargetType="GridSplitter">
-        <Setter Property="Background"    Value="{StaticResource BorderBrush}"/>
+        <Setter Property="Background"    Value="{StaticResource PanelBgBrush}"/>
         <Setter Property="ShowsPreview"  Value="True"/>
     </Style>
 

@@ -52,12 +52,46 @@ import re
 import subprocess
 import tempfile
 import os
+from contextlib import asynccontextmanager
 from pathlib import Path
+
+
+def _load_env_file() -> None:
+    """
+    Load variables from the repository-root ``.env`` file into the process
+    environment *without* overriding values that were already set externally.
+
+    This lets ``setup_arbiter.py`` write ``ARBITER_MODEL_PATH`` once and have
+    it picked up automatically on every subsequent server start.
+    """
+    env_path = Path(__file__).resolve().parent.parent.parent / ".env"
+    if not env_path.exists():
+        return
+    try:
+        with open(env_path, encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, _, value = line.partition("=")
+                key = key.strip()
+                # Strip optional surrounding quotes from the value
+                value = value.strip().strip('"').strip("'")
+                if key and key not in os.environ:
+                    os.environ[key] = value
+    except OSError:
+        pass
+
+
+# Load .env before importing llm_interface so ARBITER_MODEL_PATH / OLLAMA_HOST
+# are in the environment when those modules evaluate their module-level constants.
+_load_env_file()
+
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 import sqlite3
-from llm_interface import generate_response
+from llm_interface import generate_response, get_model_status, preload_model
 from VoiceManager import speak
 from model_downloader import (
     detect_vram_gb,
@@ -82,7 +116,16 @@ _PROJECT_NAME_RE = re.compile(r"^[\w ()\-]+$")
 _BUILD_ERROR_MAX_CHARS = 1000
 _RUN_TIMEOUT_SECONDS = 60
 
-app = FastAPI(title="Arbiter AI Bridge", version="0.1.0")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Pre-load the LLM in a background thread so the first chat request is fast."""
+    import threading
+    threading.Thread(target=preload_model, daemon=True, name="llm-preload").start()
+    yield
+
+
+app = FastAPI(title="Arbiter AI Bridge", version="0.1.0", lifespan=lifespan)
 
 
 class UserMessage(BaseModel):
@@ -254,6 +297,20 @@ def status():
         vram_gb=round(vram, 2),
         max_tokens=max_tokens,
     )
+
+
+@app.get("/llm/status")
+def llm_status():
+    """
+    Return the current LLM backend status.
+
+    Possible ``backend`` values:
+    - ``"gguf"``       — a local GGUF model is loaded via llama-cpp-python
+    - ``"ollama"``     — a local Ollama instance is providing inference
+    - ``"stub"``       — no model configured; responses are placeholders
+    - ``"not_loaded"`` — model load not yet attempted (server just started)
+    """
+    return get_model_status()
 
 
 @app.post("/chat")

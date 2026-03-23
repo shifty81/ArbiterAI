@@ -168,6 +168,29 @@ def preload_model() -> None:
     _load_model()
 
 
+def reload_model() -> dict:
+    """Force a model reload — reset cached state and re-detect available backends.
+
+    Call this after downloading a new GGUF model so the server picks it up
+    without requiring a full restart.
+
+    Returns:
+        The new LLM backend status dict (same shape as ``get_model_status()``).
+    """
+    global _model, _tokenizer, _ollama_model_name
+    _model = None
+    _tokenizer = None
+    _ollama_model_name = ""
+    print("[LLM] Reloading model backend…", flush=True)
+    _load_model()
+    status = get_model_status()
+    print(
+        f"[LLM] Reload complete — backend: {status['backend']} ({status['detail']})",
+        flush=True,
+    )
+    return status
+
+
 def generate_response(
     message: str,
     project: str,

@@ -117,8 +117,24 @@
                         <RowDefinition Height="*"/>
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
-                    <TextBlock Grid.Row="0" Name="ChatHeader" Text="Chat"
-                               FontWeight="Bold" FontSize="13" Margin="0,0,0,4"/>
+                    <!-- Chat header: title + action buttons -->
+                    <Grid Grid.Row="0" Margin="0,0,0,4">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Name="ChatHeader" Text="Chat"
+                                   FontWeight="Bold" FontSize="13" VerticalAlignment="Center"/>
+                        <Button Grid.Column="1" Name="ExportChatBtn"
+                                Content="📥 Export" Width="78" Margin="4,0,0,0"
+                                Click="ExportChat_Click" IsEnabled="False"
+                                ToolTip="Export conversation to chat_log.md"/>
+                        <Button Grid.Column="2" Name="GenerateRoadmapBtn"
+                                Content="🗺 Roadmap" Width="86" Margin="4,0,0,0"
+                                Click="GenerateRoadmap_Click" IsEnabled="False"
+                                ToolTip="Ask Arbiter to generate an implementation roadmap"/>
+                    </Grid>
                     <ListBox Grid.Row="1" Name="ChatDisplay"
                              ScrollViewer.VerticalScrollBarVisibility="Auto"/>
                     <Grid Grid.Row="2" Margin="0,6,0,0">

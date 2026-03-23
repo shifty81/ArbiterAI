@@ -251,8 +251,10 @@ namespace ArbiterHost
             BuildBtn.IsEnabled  = hasProject;
             RunBtn.IsEnabled    = hasProject;
             TestBtn.IsEnabled   = hasProject;
-            PhaseSelector.IsEnabled = hasProject;
-            ChatInput.IsEnabled = hasProject;
+            PhaseSelector.IsEnabled   = hasProject;
+            ChatInput.IsEnabled       = hasProject;
+            ExportChatBtn.IsEnabled   = hasProject;
+            GenerateRoadmapBtn.IsEnabled = hasProject;
         }
 
         // ═════════════════════════════════════════════════════════════════════
@@ -652,6 +654,76 @@ namespace ArbiterHost
             {
                 btn.IsEnabled = true;
                 btn.Content = "Mic";
+            }
+        }
+
+        // ═════════════════════════════════════════════════════════════════════
+        //  CHAT INDEXING & ROADMAP GENERATION
+        // ═════════════════════════════════════════════════════════════════════
+
+        private async void ExportChat_Click(object sender, RoutedEventArgs e)
+        {
+            if (_currentProjectName == null) return;
+            ExportChatBtn.IsEnabled = false;
+            ExportChatBtn.Content = "…";
+            try
+            {
+                string url = $"{PythonApiBase}/chat/export/{Uri.EscapeDataString(_currentProjectName)}";
+                HttpResponseMessage resp = await _httpClient.GetAsync(url);
+                resp.EnsureSuccessStatusCode();
+                using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+                int count = doc.RootElement.TryGetProperty("messages", out var m) ? m.GetInt32() : 0;
+                string path = doc.RootElement.TryGetProperty("path", out var p) ? p.GetString() ?? "" : "";
+                string summary = $"Exported {count} messages to:\n{path}";
+                AppendConsole(AppConsoleBox, $"Chat exported: {count} messages → {path}");
+                MessageBox.Show(summary, "Export Chat", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                string err = $"Export failed: {ex.Message}";
+                AppendConsole(AppConsoleBox, err);
+                MessageBox.Show(err, "Export Chat", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+            finally
+            {
+                ExportChatBtn.IsEnabled = true;
+                ExportChatBtn.Content = "📥 Export";
+            }
+        }
+
+        private async void GenerateRoadmap_Click(object sender, RoutedEventArgs e)
+        {
+            if (_currentProjectName == null) return;
+            GenerateRoadmapBtn.IsEnabled = false;
+            GenerateRoadmapBtn.Content = "⏳…";
+            ChatDisplay.Items.Add("Arbiter: Generating roadmap — please wait…");
+            try
+            {
+                string url = $"{PythonApiBase}/roadmap/generate/{Uri.EscapeDataString(_currentProjectName)}";
+                var content = new StringContent("{}", Encoding.UTF8, "application/json");
+                HttpResponseMessage resp = await _httpClient.PostAsync(url, content);
+                resp.EnsureSuccessStatusCode();
+                using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+                string roadmap = doc.RootElement.TryGetProperty("roadmap", out var r)
+                    ? r.GetString() ?? string.Empty : string.Empty;
+                string path = doc.RootElement.TryGetProperty("path", out var p)
+                    ? p.GetString() ?? string.Empty : string.Empty;
+
+                ChatDisplay.Items.Add($"Arbiter (Roadmap):\n{roadmap}");
+                SuggestionsListBox.Items.Add(roadmap);
+                ChatDisplay.ScrollIntoView(ChatDisplay.Items[ChatDisplay.Items.Count - 1]);
+                AppendConsole(AppConsoleBox, $"Roadmap saved → {path}");
+                LoadPhaseSelector();   // Refresh phase selector if roadmap.json was updated
+            }
+            catch (Exception ex)
+            {
+                AppendConsole(AppConsoleBox, $"Roadmap generation failed: {ex.Message}");
+                ChatDisplay.Items.Add($"Error: {ex.Message}");
+            }
+            finally
+            {
+                GenerateRoadmapBtn.IsEnabled = true;
+                GenerateRoadmapBtn.Content = "🗺 Roadmap";
             }
         }
 

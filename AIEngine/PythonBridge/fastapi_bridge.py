@@ -122,6 +122,10 @@ _PROJECT_NAME_RE = re.compile(r"^[\w ()\-]+$")
 _BUILD_ERROR_MAX_CHARS = 1000
 _RUN_TIMEOUT_SECONDS = 60
 
+# Chat-indexing / roadmap constants
+_CHAT_TIMESTAMP_FMT = "%Y-%m-%d %H:%M UTC"  # used in Markdown chat logs
+_ROADMAP_HISTORY_CHARS = 500                 # max chars per message used for roadmap context
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -359,6 +363,34 @@ def set_project_persona(project_name: str, req: PersonaRequest):
 
 # ─────────────────────────────────────────────────────────────────────────────
 
+# ═════════════════════════════════════════════════════════════════════════════
+#  CHAT INDEXING — auto-save every exchange to a Markdown file per project
+# ═════════════════════════════════════════════════════════════════════════════
+
+def _get_chat_log_path(project_name: str) -> Path:
+    """Return the path to the project's Markdown chat log (Memory folder)."""
+    log_dir = MEMORY_ROOT / project_name
+    log_dir.mkdir(parents=True, exist_ok=True)
+    return log_dir / "chat_log.md"
+
+
+def _append_to_chat_log_md(project_name: str, role: str, message: str) -> None:
+    """Append a single message to the project's Markdown chat log.
+
+    Creates the file with a header on first write.  Safe for sequential use —
+    no locking needed because Arbiter processes one chat message at a time.
+    """
+    from datetime import datetime, timezone
+    log_path = _get_chat_log_path(project_name)
+    ts = datetime.now(timezone.utc).strftime(_CHAT_TIMESTAMP_FMT)
+    label = "**You**" if role == "User" else "**Arbiter**"
+    write_header = not log_path.exists() or log_path.stat().st_size == 0
+    with open(log_path, "a", encoding="utf-8") as fh:
+        if write_header:
+            fh.write(f"# Chat Log — {project_name}\n\n")
+        fh.write(f"---\n\n{label} _{ts}_\n\n{message}\n\n")
+
+
 @app.post("/chat")
 def chat(msg: UserMessage):
     conn = get_db(msg.project)
@@ -380,6 +412,10 @@ def chat(msg: UserMessage):
     conn.commit()
     conn.close()
 
+    # Auto-index both sides of the exchange to Markdown
+    _append_to_chat_log_md(msg.project, "User", msg.message)
+    _append_to_chat_log_md(msg.project, "Arbiter", response)
+
     if msg.use_voice:
         speak(response, msg.voice)
 
@@ -394,6 +430,214 @@ def history(project_name: str):
     ).fetchall()
     conn.close()
     return [{"role": r, "message": m, "timestamp": t} for r, m, t in rows]
+
+
+@app.get("/chat/export/{project_name}")
+def export_chat_to_md(project_name: str):
+    """Re-build and export the full conversation history to a Markdown file.
+
+    Writes to ``Memory/ConversationLogs/{project}/chat_log.md`` and mirrors
+    the file to ``Projects/{project}/chat_log.md`` when the project folder
+    exists.  Safe to call at any time to regenerate the log from SQLite.
+    """
+    _validate_project_name(project_name)
+    conn = get_db(project_name)
+    rows = conn.execute(
+        "SELECT role, message, timestamp FROM conversation ORDER BY id"
+    ).fetchall()
+    conn.close()
+
+    lines: list[str] = [f"# Chat Log — {project_name}\n\n"]
+    for role, message, timestamp in rows:
+        label = "**You**" if role == "User" else "**Arbiter**"
+        lines.append(f"---\n\n{label} _{timestamp}_\n\n{message}\n\n")
+
+    md_content = "".join(lines)
+    log_path = _get_chat_log_path(project_name)
+    log_path.write_text(md_content, encoding="utf-8")
+
+    # Mirror to project folder so it lives alongside roadmap.json
+    project_dir = PROJECTS_ROOT / project_name
+    if project_dir.exists():
+        (project_dir / "chat_log.md").write_text(md_content, encoding="utf-8")
+
+    return {
+        "ok": True,
+        "path": str(log_path),
+        "messages": len(rows),
+    }
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+#  ROADMAP GENERATION — AI derives an implementation roadmap from chat history
+# ═════════════════════════════════════════════════════════════════════════════
+
+class _RoadmapGenRequest(BaseModel):
+    context: str = ""   # Optional extra instructions from the user
+
+
+@app.post("/roadmap/generate/{project_name}")
+def generate_project_roadmap(project_name: str, req: _RoadmapGenRequest = _RoadmapGenRequest()):
+    """Use the LLM to generate an implementation roadmap from conversation history.
+
+    Saves ``roadmap.md`` (Markdown) and updates ``roadmap.json`` in the project
+    folder.  Returns the generated Markdown so the UI can render it inline.
+    """
+    _validate_project_name(project_name)
+    conn = get_db(project_name)
+    rows = conn.execute(
+        "SELECT role, message FROM conversation ORDER BY id DESC LIMIT 30"
+    ).fetchall()
+    conn.close()
+
+    if not rows:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "No conversation history found for this project. "
+                "Chat with Arbiter first to build context, then generate the roadmap."
+            ),
+        )
+
+    history_text = "\n".join(
+        f"{role}: {message[:_ROADMAP_HISTORY_CHARS]}" for role, message in reversed(rows)
+    )
+    context_block = f"\n\nExtra instructions:\n{req.context}" if req.context else ""
+
+    prompt = (
+        f"You are Arbiter, an AI planning assistant. "
+        f"Based on the following conversation history for the project '{project_name}', "
+        "generate a clear, actionable implementation roadmap in Markdown format.\n\n"
+        "Rules:\n"
+        "- Organise into numbered phases (Phase 1, Phase 2, …)\n"
+        "- Each phase has a short title and bullet-point tasks\n"
+        "- Focus on concrete implementation steps from the conversation\n"
+        "- Be specific — no filler, no generic advice\n\n"
+        f"Conversation history:\n{history_text}"
+        f"{context_block}\n\n"
+        "Generate the roadmap now:"
+    )
+
+    roadmap_text = generate_response(prompt, project_name)
+
+    from datetime import datetime, timezone
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    full_md = (
+        f"# Roadmap — {project_name}\n\n"
+        f"_Generated by Arbiter AI on {ts}_\n\n"
+        f"{roadmap_text}\n"
+    )
+
+    project_dir = PROJECTS_ROOT / project_name
+    project_dir.mkdir(parents=True, exist_ok=True)
+    (project_dir / "roadmap.md").write_text(full_md, encoding="utf-8")
+
+    # Persist to roadmap.json so the WPF phase-selector can read it.
+    # Use _json (already imported at module level via `import json as _json`).
+    roadmap_json_path = project_dir / "roadmap.json"
+    try:
+        existing: dict = {}
+        if roadmap_json_path.exists():
+            existing = _json.loads(roadmap_json_path.read_text(encoding="utf-8"))
+        existing["generated_roadmap"] = {"generated_at": ts, "content": roadmap_text}
+        roadmap_json_path.write_text(
+            _json.dumps(existing, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
+    except (OSError, ValueError) as _rmap_err:
+        # Non-fatal: roadmap.md was already written; JSON update is best-effort.
+        print(f"[Arbiter] roadmap.json update skipped: {_rmap_err}", flush=True)
+
+    return {
+        "ok": True,
+        "roadmap": full_md,
+        "path": str(project_dir / "roadmap.md"),
+    }
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+#  REPO DIFF — compare ArbiterAI feature set against the Arbiter tooling repo
+# ═════════════════════════════════════════════════════════════════════════════
+
+#  This is the canonical feature registry for this repo.
+#  Add entries here as features are implemented so the diff stays accurate.
+_ARBITER_AI_FEATURES: list[dict] = [
+    {"id": "chat_ui",          "title": "ChatGPT-style web chat UI",                      "status": "done"},
+    {"id": "wpf_client",       "title": "WPF dark-theme Windows client",                   "status": "done"},
+    {"id": "chat_md_index",    "title": "Chat conversation auto-indexed to Markdown",      "status": "done"},
+    {"id": "roadmap_gen",      "title": "AI-generated project roadmaps from chat history", "status": "done"},
+    {"id": "tts",              "title": "Voice output (TTS — pyttsx3 / System.Speech)",    "status": "done"},
+    {"id": "stt",              "title": "Voice input (STT — Whisper + Windows Speech)",    "status": "done"},
+    {"id": "personas",         "title": "Persona system (Arbiter / Coder / Teacher / Organizer)", "status": "done"},
+    {"id": "sqlite_history",   "title": "Per-project SQLite conversation history",         "status": "done"},
+    {"id": "project_mgmt",     "title": "Project workspace management + file tree",        "status": "done"},
+    {"id": "git_integration",  "title": "Git integration (commit, push, pull, branch, log)", "status": "done"},
+    {"id": "llm_loading",      "title": "Hardware-aware LLM loading (GGUF + Ollama + stub)", "status": "done"},
+    {"id": "build_loop",       "title": "Build / run / test loop (dotnet, npm, Python, Make)", "status": "done"},
+    {"id": "model_download",   "title": "Automated model download (HuggingFace Hub)",      "status": "done"},
+    {"id": "monaco_ide",       "title": "Monaco IDE web UI (Explorer, Editor, Git, AI Chat, Terminal)", "status": "done"},
+    {"id": "file_crud",        "title": "File CRUD API (/files read/write/delete/rename)", "status": "done"},
+    {"id": "ai_code_actions",  "title": "AI code actions (complete, explain, fix, refactor, tests)", "status": "done"},
+    {"id": "ws_streaming",     "title": "WebSocket streaming (build output, terminal, PTY)", "status": "done"},
+    {"id": "arbiter_engine",   "title": "Arbiter Engine — full agentic backend (port 8001)", "status": "done"},
+    {"id": "engine_backends",  "title": "Arbiter Engine — 12 LLM backends",                "status": "done"},
+    {"id": "engine_self_build","title": "Arbiter Engine — self-build loop",                 "status": "done"},
+    {"id": "snippet_library",  "title": "Code snippet library (save / search / run)",      "status": "done"},
+    {"id": "brainstorm",       "title": "Brainstorm session endpoint",                     "status": "done"},
+    {"id": "scaffold",         "title": "Scaffold / template generator",                   "status": "done"},
+    {"id": "ide_native_bridge","title": "WPF ↔ Monaco native tool-call bridge",            "status": "in_progress"},
+    {"id": "archive_codex",    "title": "Archive & Library knowledge codex",               "status": "planned"},
+    {"id": "multi_agent",      "title": "Multi-agent orchestration",                       "status": "planned"},
+    {"id": "rag",              "title": "RAG knowledge retrieval over Archive",             "status": "planned"},
+    {"id": "installer",        "title": "NSIS / Inno Setup installer",                     "status": "planned"},
+]
+
+
+@app.get("/repo/diff")
+def repo_feature_diff():
+    """Return a Markdown feature-comparison report for ArbiterAI.
+
+    Lists every known feature and its implementation status.  Call this
+    periodically to diff against the Arbiter tooling repo — features present
+    here but missing in Arbiter need to be wired up on the Arbiter side.
+
+    Integration note: Arbiter should call ``GET /repo/diff`` to discover which
+    ArbiterAI endpoints are ready, then surface them in its IDE/tooling layer.
+    """
+    done    = [f for f in _ARBITER_AI_FEATURES if f["status"] == "done"]
+    wip     = [f for f in _ARBITER_AI_FEATURES if f["status"] == "in_progress"]
+    planned = [f for f in _ARBITER_AI_FEATURES if f["status"] == "planned"]
+
+    def _section(title: str, items: list[dict]) -> str:
+        if not items:
+            return ""
+        rows = "\n".join(f"- {i['title']}  `{i['id']}`" for i in items)
+        return f"### {title}\n\n{rows}\n\n"
+
+    report_md = (
+        "# ArbiterAI Feature Registry\n\n"
+        "_This is the canonical feature list for the ArbiterAI engine. "
+        "Use it to track which capabilities are available for the Arbiter tooling layer._\n\n"
+        + _section("✅ Implemented", done)
+        + _section("🔄 In Progress", wip)
+        + _section("📋 Planned", planned)
+        + "---\n\n"
+        "## Integration\n\n"
+        "Arbiter tooling repo should call `GET http://localhost:8000/repo/diff` to discover "
+        "available ArbiterAI features and surface them in the IDE/tooling layer.\n\n"
+        "To compare with the live Arbiter repo:\n"
+        "```\ngit clone https://github.com/shifty81/Arbiter.git\n```\n"
+    )
+
+    return {
+        "features": _ARBITER_AI_FEATURES,
+        "summary": {
+            "done": len(done),
+            "in_progress": len(wip),
+            "planned": len(planned),
+            "total": len(_ARBITER_AI_FEATURES),
+        },
+        "report": report_md,
+    }
 
 
 @app.get("/models")
@@ -1578,7 +1822,6 @@ for _stub_path, _stub_tag in [
     ("/apiclient/collections", "api-client"), ("/apiclient/collection", "api-client"),
     ("/apiclient/send", "api-client"),
     ("/deps/analyze", "deps"), ("/deps/reports", "deps"),
-    ("/roadmap/next", "roadmap"),
     ("/testrunner/run", "testrunner"), ("/testrunner/reports", "testrunner"),
     ("/knowledge/fetch", "knowledge"), ("/knowledge/remove", "knowledge"),
     ("/rules", "rules"), ("/tasks", "tasks"),

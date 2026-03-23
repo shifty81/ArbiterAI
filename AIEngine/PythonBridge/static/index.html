@@ -613,6 +613,65 @@
         /* ── Utilities ── */
         .hidden { display: none !important; }
         .hint   { padding: 8px 10px; font-size: 12px; color: #555; font-style: italic; }
+
+        /* ── Header action buttons (Export Chat / Generate Roadmap) ── */
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-left: auto;
+        }
+
+        .action-btn {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            padding: 5px 12px;
+            background: #2a2a2a;
+            border: 1px solid #3a3a3a;
+            border-radius: 8px;
+            color: #c0c0c0;
+            font-size: 12.5px;
+            cursor: pointer;
+            transition: background .15s, border-color .15s, color .15s;
+            white-space: nowrap;
+        }
+        .action-btn:hover:not(:disabled) {
+            background: #333;
+            border-color: #4a4a4a;
+            color: #ececec;
+        }
+        .action-btn:disabled {
+            opacity: .4;
+            cursor: not-allowed;
+        }
+        .action-btn.busy {
+            border-color: #007acc44;
+            color: #60b0ff;
+        }
+
+        /* ── Toast notification ── */
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            background: #252525;
+            border: 1px solid #3a3a3a;
+            border-radius: 10px;
+            padding: 11px 18px;
+            font-size: 13px;
+            color: #e0e0e0;
+            z-index: 9999;
+            max-width: 360px;
+            box-shadow: 0 4px 20px rgba(0,0,0,.5);
+            animation: toastIn .22s ease-out;
+        }
+        .toast.toast-ok   { border-color: #22c55e44; }
+        .toast.toast-err  { border-color: #ef444444; }
+        @keyframes toastIn {
+            from { transform: translateY(14px); opacity: 0; }
+            to   { transform: translateY(0);    opacity: 1; }
+        }
     </style>
 </head>
 <body>
@@ -709,6 +768,31 @@
             <div class="project-badge" id="headerPersonaBadge"
                  style="margin-left:8px;border-color:#1e3a5c;color:#60b0ff;">
                 <span id="headerPersonaName" style="font-size:12px;">Arbiter</span>
+            </div>
+            <!-- ── Action buttons ── -->
+            <div class="header-actions">
+                <button class="action-btn" id="exportChatBtn"
+                        title="Export full conversation to Markdown (chat_log.md)">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+                        <path d="M12 3v13M7 11l5 5 5-5" stroke="currentColor"
+                              stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"
+                              stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
+                    Export Chat
+                </button>
+                <button class="action-btn" id="generateRoadmapBtn"
+                        title="Ask Arbiter to generate an implementation roadmap from this conversation">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+                        <path d="M9 20H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v5"
+                              stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+                        <path d="M14 14h5m0 0l-2-2m2 2l-2 2" stroke="currentColor"
+                              stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M8 10h8M8 14h4" stroke="currentColor"
+                              stroke-width="1.7" stroke-linecap="round"/>
+                    </svg>
+                    Roadmap
+                </button>
             </div>
         </div>
 
@@ -819,7 +903,78 @@ const attachConfirmBtn = document.getElementById('attachConfirmBtn');
 const attachNoBtn      = document.getElementById('attachNoProjectBtn');
 const attachCancelBtn  = document.getElementById('attachCancelBtn');
 
-/* ── Server health ──────────────────────────────────────────────────────────── */
+const exportChatBtn       = document.getElementById('exportChatBtn');
+const generateRoadmapBtn  = document.getElementById('generateRoadmapBtn');
+
+/* ── Toast helper ──────────────────────────────────────────────────────────── */
+function showToast(msg, type = 'ok', durationMs = 4000) {
+    const el = document.createElement('div');
+    el.className = `toast toast-${type}`;
+    el.textContent = msg;
+    document.body.appendChild(el);
+    setTimeout(() => {
+        el.style.transition = 'opacity .3s';
+        el.style.opacity = '0';
+        setTimeout(() => el.remove(), 320);
+    }, durationMs);
+}
+
+/* ── Export Chat → Markdown ─────────────────────────────────────────────────── */
+exportChatBtn.addEventListener('click', async () => {
+    if (!activeProject) return;
+    exportChatBtn.disabled = true;
+    exportChatBtn.classList.add('busy');
+    try {
+        const r = await fetch(`${API}/chat/export/${encodeURIComponent(activeProject)}`);
+        if (!r.ok) throw new Error(`Server error ${r.status}`);
+        const data = await r.json();
+        showToast(
+            `✅ Exported ${data.messages} messages → chat_log.md`,
+            'ok'
+        );
+    } catch (e) {
+        showToast(`⚠️ Export failed: ${e.message}`, 'err');
+    } finally {
+        exportChatBtn.disabled = false;
+        exportChatBtn.classList.remove('busy');
+    }
+});
+
+/* ── Generate Roadmap ───────────────────────────────────────────────────────── */
+generateRoadmapBtn.addEventListener('click', async () => {
+    if (!activeProject) return;
+    generateRoadmapBtn.disabled = true;
+    generateRoadmapBtn.classList.add('busy');
+    const origHTML = generateRoadmapBtn.innerHTML;
+    generateRoadmapBtn.innerHTML = '⏳ Generating…';
+    const typingEl = appendTyping();
+    scrollBottom();
+    try {
+        const r = await fetch(
+            `${API}/roadmap/generate/${encodeURIComponent(activeProject)}`,
+            { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }
+        );
+        typingEl.remove();
+        if (!r.ok) {
+            const err = await r.json().catch(() => ({}));
+            showToast(`⚠️ ${err.detail || 'Roadmap generation failed'}`, 'err');
+        } else {
+            const data = await r.json();
+            appendMessage('arbiter', data.roadmap, true);
+            scrollBottom();
+            showToast('✅ Roadmap saved → roadmap.md', 'ok');
+        }
+    } catch (e) {
+        typingEl.remove();
+        showToast(`⚠️ Error: ${e.message}`, 'err');
+    } finally {
+        generateRoadmapBtn.disabled = false;
+        generateRoadmapBtn.classList.remove('busy');
+        generateRoadmapBtn.innerHTML = origHTML;
+    }
+});
+
+
 async function checkServer() {
     try {
         const r = await fetch(`${API}/health`, { signal: AbortSignal.timeout(5000) });

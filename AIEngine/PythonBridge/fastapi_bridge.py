@@ -11,39 +11,68 @@ import sys as _sys
 import os as _os
 
 def _ensure_dependencies() -> None:
-    """Install requirements.txt dependencies if they are not already present."""
-    try:
-        import fastapi  # noqa: F401 — presence check only
-        return  # already installed
-    except ImportError:
-        pass
+    """Ensure all required dependencies are installed.
 
+    Runs ``pip install -r requirements.txt --prefer-binary`` on every startup.
+    Using ``--prefer-binary`` means pip will always choose a pre-built wheel
+    over source compilation, which avoids build-tool requirements on Windows
+    for packages like ``llama-cpp-python``.
+
+    This function is a no-op when all packages are already current.  It only
+    terminates the process if the core FastAPI/uvicorn packages remain missing
+    after the install attempt — optional packages (llama-cpp-python, whisper,
+    etc.) are allowed to fail without crashing the server.
+    """
     _req = _os.path.join(_os.path.dirname(__file__), "requirements.txt")
+
     if not _os.path.exists(_req):
-        print(
-            f"[Arbiter] requirements.txt not found at: {_req}\n"
-            "Cannot auto-install dependencies. "
-            "Run: pip install fastapi uvicorn pydantic",
-            flush=True,
-        )
-        _sys.exit(1)
-    print(
-        "[Arbiter] Required Python packages are missing. "
-        "Installing from requirements.txt — please wait...",
-        flush=True,
-    )
+        # No requirements file — just verify the bare minimum.
+        try:
+            import fastapi  # noqa: F401
+        except ImportError:
+            print(
+                "[Arbiter] requirements.txt not found and fastapi is not installed.\n"
+                "Run: pip install fastapi uvicorn pydantic",
+                flush=True,
+            )
+            _sys.exit(1)
+        return
+
+    print("[Arbiter] Checking / installing dependencies (--prefer-binary)…", flush=True)
     result = _subprocess.run(
-        [_sys.executable, "-m", "pip", "install", "-r", _req],
-        capture_output=False,  # stream pip output so the C# console tab shows progress
+        [
+            _sys.executable, "-m", "pip", "install",
+            "-r", _req,
+            "--prefer-binary",
+            "-q",
+            "--no-warn-script-location",
+        ],
+        capture_output=True,
+        text=True,
     )
+
     if result.returncode != 0:
+        # Surface the error but don't abort — optional packages (e.g. llama-cpp-python
+        # on unusual platforms) may fail while core packages succeed.
         print(
-            "[Arbiter] pip install failed (see output above). "
-            "Run manually:  pip install -r AIEngine/PythonBridge/requirements.txt",
+            "[Arbiter] pip install reported errors "
+            "(some optional packages may be unavailable):\n" + result.stderr,
+            flush=True,
+        )
+
+    # Verify that the minimum-required packages are importable.
+    try:
+        import fastapi   # noqa: F401
+        import uvicorn   # noqa: F401
+    except ImportError as exc:
+        print(
+            f"[Arbiter] Core package missing after install attempt: {exc}\n"
+            "Run manually:  pip install fastapi uvicorn",
             flush=True,
         )
         _sys.exit(1)
-    print("[Arbiter] Dependencies installed successfully.", flush=True)
+
+    print("[Arbiter] Dependencies OK.", flush=True)
 
 _ensure_dependencies()
 # ─────────────────────────────────────────────────────────────────────────────
@@ -91,7 +120,7 @@ from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 import sqlite3
-from llm_interface import generate_response, get_model_status, preload_model
+from llm_interface import generate_response, get_model_status, preload_model, reload_model
 from VoiceManager import speak
 from persona_manager import (
     get_active_persona,
@@ -677,6 +706,20 @@ def download_model_endpoint(req: DownloadRequest):
 def download_status_endpoint():
     """Return the current model download progress and status."""
     return get_download_status()
+
+
+@app.post("/models/reload")
+def reload_model_endpoint():
+    """Force the LLM backend to reload without restarting the server.
+
+    Clears the cached model state and re-runs the backend detection sequence
+    (GGUF → Ollama → stub).  Call this after a model download completes so the
+    server automatically picks up the new model file.
+
+    Returns the new backend status in the same shape as ``GET /llm/status``.
+    """
+    status = reload_model()
+    return {"ok": True, "status": status}
 
 
 @app.post("/build")

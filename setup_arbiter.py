@@ -45,7 +45,12 @@ def main() -> None:
     # ── Step 1: Install Python dependencies ───────────────────────────────
     print("\n[1/4] Installing Python dependencies …")
     _run(
-        [sys.executable, "-m", "pip", "install", "-r", str(REQUIREMENTS), "--quiet"],
+        [
+            sys.executable, "-m", "pip", "install",
+            "-r", str(REQUIREMENTS),
+            "--prefer-binary",  # use pre-built wheels (avoids C++ compile hangs on Windows)
+            "--quiet",
+        ],
     )
     print("  ✓ Dependencies installed")
 

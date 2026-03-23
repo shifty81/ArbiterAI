@@ -26,6 +26,7 @@ sys.path.insert(0, str(_BASE))
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
 import uvicorn
 
@@ -93,6 +94,21 @@ class BuildRequest(BaseModel):
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
+
+# Shared static UI (PythonBridge's index.html works against any port)
+_STATIC_INDEX = _BASE.parent / "PythonBridge" / "static" / "index.html"
+
+
+@app.get("/", response_class=HTMLResponse)
+def web_ui():
+    """Serve the Arbiter AI web interface."""
+    if _STATIC_INDEX.exists():
+        return FileResponse(str(_STATIC_INDEX), media_type="text/html")
+    return HTMLResponse(
+        content="<h1>Arbiter Engine</h1><p>Web UI not found — ensure AIEngine/PythonBridge/static/index.html exists.</p>",
+        status_code=200,
+    )
+
 
 @app.get("/health")
 def health() -> dict:

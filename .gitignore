@@ -42,3 +42,6 @@ Temp/
 .DS_Store
 Thumbs.db
 AIEngine/ArbiterEngine/logs/arbiter_engine.log
+Memory/ConversationLogs/Arbiter (Self)/chat_log.md
+Memory/ConversationLogs/ExampleProject/chat_log.md
+/Memory/ConversationLogs
